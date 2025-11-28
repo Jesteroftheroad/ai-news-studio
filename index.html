@@ -11,10 +11,15 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #0d111c; color: #f8fafc; }
+        /* Base styles are now handled by theme classes on the root div */
+        body { font-family: 'Inter', sans-serif; }
         .bengali-text { font-family: 'Noto Sans Bengali', sans-serif; }
         
-        /* Neon Button Effect */
+        /* Custom Theme Classes */
+        .dark-theme { background-color: #0d111c; color: #f8fafc; }
+        .light-theme { background-color: #f1f5f9; color: #1e293b; }
+        
+        /* Neon Button Effect (Red is kept as accent color) */
         .neon-button {
             transition: all 0.2s ease-in-out;
             box-shadow: 0 0 5px rgba(239, 68, 68, 0);
@@ -45,9 +50,27 @@
 
         /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #1e293b; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        .dark-theme ::-webkit-scrollbar-track { background: #1e293b; }
+        .dark-theme ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        .dark-theme ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        
+        .light-theme ::-webkit-scrollbar-track { background: #e2e8f0; }
+        .light-theme ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+        .light-theme ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        
+        /* Header specific gradient and pattern */
+        .header-bg-dark {
+            background-color: #0b0e16; /* Base dark color */
+            background-image: radial-gradient(circle at top right, rgba(239, 68, 68, 0.1), transparent),
+                              radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.05), transparent);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        }
+        .header-bg-light {
+            background-color: #ffffff; /* Base light color */
+            background-image: radial-gradient(circle at top right, rgba(254, 202, 202, 0.5), transparent),
+                              radial-gradient(circle at bottom left, rgba(191, 219, 254, 0.3), transparent);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
     </style>
 </head>
 <body>
@@ -100,9 +123,13 @@
         const App = () => {
             const [apiKey, setApiKey] = React.useState('');
             const [script, setScript] = React.useState('');
-            const [category, setCategory] = React.useState('General News');
+            const [category, setCategory] = React.useState('Breaking News');
             const [voice, setVoice] = React.useState('Puck'); 
             const [speedLevel, setSpeedLevel] = React.useState(2); // Discrete level: 1, 2, 3, 4
+            const [pitch, setPitch] = React.useState('normal'); // New state: low, normal, high
+            const [targetLanguage, setTargetLanguage] = React.useState('auto'); // New state: auto, bengali, english
+            const [theme, setTheme] = React.useState('dark'); // New state: dark or light
+            
             const [loading, setLoading] = React.useState(false);
             const [audioSrc, setAudioSrc] = React.useState(null);
             const [error, setError] = React.useState('');
@@ -112,6 +139,19 @@
             const [previewAudioSrc, setPreviewAudioSrc] = React.useState(null);
             const [previewingVoice, setPreviewingVoice] = React.useState(null);
 
+            // --- Theme Setup ---
+            const isDark = theme === 'dark';
+            const bgNav = isDark ? 'header-bg-dark border-slate-800' : 'header-bg-light border-slate-200'; // Updated for new header styles
+            const bgCard = isDark ? 'bg-[#1f2937] border-slate-800' : 'bg-white border-slate-200 shadow-lg';
+            const textHeader = isDark ? 'text-white' : 'text-slate-900';
+            const textPrimary = isDark ? 'text-slate-100' : 'text-slate-800';
+            const textMuted = isDark ? 'text-slate-400' : 'text-slate-500';
+            const bgInput = isDark ? 'bg-[#11141f] border-slate-800 text-white placeholder:text-slate-600' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400';
+            const borderSubtle = isDark ? 'border-slate-700' : 'border-slate-300';
+            const bgControlHover = isDark ? 'hover:bg-[#323f53]' : 'hover:bg-slate-200';
+            // --- End Theme Setup ---
+
+
             // Expanded Gemini Voice Personas
             const voices = [
                 { id: 'general', title: 'Standard Broadcast' },
@@ -119,8 +159,8 @@
                 { name: 'Kore', label: 'Studio Host (F)', desc: 'Calm & Professional', type: 'general' },
                 
                 { id: 'serious', title: 'Crime & Impact' },
-                // UPDATED: Using FENRIR for the rough, aggressive tone
-                { name: 'Fenrir', label: 'Confrontational Anchor (M)', desc: 'Rough, Intense, and Confrontational (Fighting Style)', type: 'serious' },
+                // Fenrir is used for aggressive/confrontational tone
+                { name: 'Fenrir', label: 'Confrontational Anchor (M)', desc: 'Rough, Intense, and Highly Opinionated', type: 'serious' },
                 { name: 'Charon', label: 'Crime Desk (M)', desc: 'Deep, Grave, Serious', type: 'serious' },
                 { name: 'Orus', label: 'Political (M)', desc: 'Firm & Commanding', type: 'serious' },
                 { name: 'Algenib', label: 'High Stakes Reporter (M)', desc: 'Gravelly, Deep, for Urgent Situations', type: 'serious' },
@@ -130,17 +170,42 @@
 
 
                 { id: 'energetic', title: 'Energy & Lifestyle' },
-                { name: 'Aoede', label: 'Lifestyle (F)', desc: 'Bright & Engaging', type: 'energetic' },
-                { name: 'Zephyr', label: 'Morning Show (F)', desc: 'High Energy & Fast', type: 'energetic' },
+                { name: 'Aoede', label: 'Lifestyle (F)', desc: 'Bright & Engaging, perfect for entertainment', type: 'energetic' },
+                { name: 'Zephyr', label: 'Morning Show (F)', desc: 'High Energy & Fast, perfect for sports', type: 'energetic' },
             ];
 
+            // UPDATED Segment Types based on user request
             const categories = [
-                { id: 'General News', label: 'News', icon: 'fa-newspaper', promptMod: 'professional and informative' },
-                { id: 'Breaking News', label: 'Breaking', icon: 'fa-bolt', promptMod: 'urgent, fast-paced, and serious' },
-                { id: 'Crime Report', label: 'Crime', icon: 'fa-handcuffs', promptMod: 'grave, serious, and storytelling' },
-                { id: 'Sports', label: 'Sports', icon: 'fa-trophy', promptMod: 'energetic, exciting, and dynamic' },
-                { id: 'Weather', label: 'Weather', icon: 'fa-cloud-sun', promptMod: 'calm, clear, and helpful' },
+                { id: 'Breaking News', label: 'Breaking News', icon: 'fa-bolt', color: 'bg-red-700', promptMod: 'extremely urgent, fast-paced, and serious. Emphasize the immediate importance.' },
+                { id: 'Sports', label: 'Sports', icon: 'fa-trophy', color: 'bg-green-600', promptMod: 'energetic, exciting, dynamic, and highly passionate. Use an elevated voice.' },
+                { id: 'Politics', label: 'Politics', icon: 'fa-landmark', color: 'bg-yellow-600', promptMod: 'authoritative, analytical, clear, and slightly formal. Maintain a serious tone.' },
+                { id: 'Entertainment & Lifestyle', label: 'Lifestyle', icon: 'fa-masks-theater', color: 'bg-emerald-700', promptMod: 'engaging, light-hearted, friendly, and conversational. Use a warm tone.' },
+                { id: 'Business & Economy', label: 'Business', icon: 'fa-chart-line', color: 'bg-sky-600', promptMod: 'authoritative, clear, and complex. Use a confident, measured pace.' },
+                { id: 'Crime & Law', label: 'Crime & Law', icon: 'fa-handcuffs', color: 'bg-amber-800', promptMod: 'grave, serious, and storytelling. Maintain a slow, deliberate pace.' },
+                { id: 'Community & Local News', label: 'Local News', icon: 'fa-people-group', color: 'bg-pink-600', promptMod: 'warm, localized, and friendly. Focus on community importance.' },
+                { id: 'Weather', label: 'Weather', icon: 'fa-cloud-sun', color: 'bg-purple-700', promptMod: 'calm, clear, and helpful. Maintain a pleasant, informative tone.' },
+                { id: 'Education & Youth', label: 'Education', icon: 'fa-graduation-cap', color: 'bg-indigo-700', promptMod: 'optimistic, encouraging, and clear. Use an inspiring and positive tone.' },
+                { id: 'Awareness', label: 'Awareness', icon: 'fa-hand-holding-heart', color: 'bg-blue-800', promptMod: 'inspirational, clear, and persuasive. Use an engaging and motivational voice.' },
+                { id: 'Social & Cultural', label: 'Culture', icon: 'fa-brush', color: 'bg-gray-800', promptMod: 'reflective, respectful, and engaging. Describe cultural details with appreciation.' },
             ];
+            
+            const getCategoryColorClass = (id) => {
+                return categories.find(c => c.id === id)?.color || 'bg-red-700';
+            };
+
+
+            const pitchOptions = [
+                { id: 'low', label: 'Low', desc: 'Deep and Resonant' },
+                { id: 'normal', label: 'Normal', desc: 'Default Voice Pitch' },
+                { id: 'high', label: 'High', desc: 'Elevated and Energetic' },
+            ];
+
+            const languageOptions = [
+                { id: 'auto', label: 'Auto Detect', desc: 'Best for mixed scripts' },
+                { id: 'bengali', label: 'Bengali', desc: 'Prioritize Bengali pronunciation' },
+                { id: 'english', label: 'English (US)', desc: 'Prioritize American English' },
+            ];
+
 
             const getSpeedInstruction = (level) => {
                 if (level === 1) return "normal, professional conversational pace";
@@ -250,21 +315,24 @@
 
                 const selectedCategory = categories.find(c => c.id === category);
                 const speedText = getSpeedInstruction(speedLevel);
+                const pitchInstruction = pitch === 'low' ? 'with a deep, low pitch' : pitch === 'high' ? 'with a high, energetic pitch' : 'with a natural, normal pitch';
+                const languageInstruction = targetLanguage === 'bengali' ? 'Strictly prioritize Bengali pronunciation.' : targetLanguage === 'english' ? 'Strictly prioritize American English pronunciation.' : 'Detect the language (Bengali or English) automatically.';
+                
                 let toneInstruction = selectedCategory.promptMod;
 
                 // CRITICAL TONE ADJUSTMENT FOR THE CONFRONTATIONAL VOICE
                 if (voice === 'Fenrir') {
-                    toneInstruction = 'extremely rough, gravelly, and confrontational. Use a deeply tense and dramatic delivery, like a debate anchor who is highly agitated and aggressive.';
+                    toneInstruction = 'extremely rough, gravelly, and highly opinionated. Use a deeply tense and dramatic delivery, like a debate anchor who is highly agitated and aggressive.';
                 }
                 
                 const finalPrompt = `
-                    You are a professional Bengali news anchor for "AI News Reader" by Ishan Bangla.
+                    You are a professional Bengali news anchor for "AI News Studio".
                     Your task is to read the following script aloud.
                     
                     Context: This is a ${category} segment.
-                    Tone Instruction: Read this in an ${toneInstruction} tone.
+                    Tone Instruction: Read this in an ${toneInstruction} tone, ${pitchInstruction}.
                     Pace Instruction: Read this at a ${speedText}.
-                    Language: Detect if the script is Bengali or English and pronounce accordingly.
+                    Language Instruction: ${languageInstruction}
                     
                     Script:
                     "${script}"
@@ -333,23 +401,33 @@
 
             // --- Component Rendering ---
             return (
-                <div className="min-h-screen bg-[#0d111c] text-slate-100 font-sans selection:bg-red-500 selection:text-white">
+                <div className={`min-h-screen font-sans selection:bg-red-500 selection:text-white ${isDark ? 'dark-theme' : 'light-theme'}`}>
                     
-                    {/* Top Navigation Bar */}
-                    <nav className="border-b border-slate-800 bg-[#11141f] backdrop-blur-md sticky top-0 z-20">
-                        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="h-12 w-12 flex items-center justify-center rounded-lg shadow-2xl shadow-red-500/30 ring-2 ring-red-600 bg-[#1f2937] text-red-500">
-                                    <i className="fa-solid fa-microphone-lines text-2xl"></i>
+                    {/* Top Navigation Bar (MODERNIZED) */}
+                    <nav className={`${bgNav} border-b ${isDark ? 'border-slate-800' : 'border-slate-200'} sticky top-0 z-20 transition-colors`}>
+                        <div className="max-w-7xl mx-auto px-6 h-24 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                {/* Dynamic Logo Icon */}
+                                <div className="h-14 w-14 flex items-center justify-center rounded-xl shadow-2xl shadow-red-500/50 ring-2 ring-red-600 bg-red-500 text-white transform rotate-3 transition-transform hover:rotate-0">
+                                    <i className="fa-solid fa-satellite-dish text-2xl"></i>
                                 </div>
                                 <div>
-                                    <h1 className="font-extrabold text-2xl leading-tight tracking-tight text-white">AI News Studio</h1>
-                                    <p className="text-[10px] text-slate-400 font-medium uppercase tracking-[0.2em]">Ishan Bangla Broadcast Suite</p>
+                                    <h1 className={`font-extrabold text-3xl leading-snug tracking-tighter ${textHeader} transition-colors`}>
+                                        AI News Studio
+                                    </h1>
+                                    <p className={`text-sm ${textMuted} font-medium uppercase tracking-[0.2em] transition-colors`}>
+                                        <span className="text-red-500 font-bold">ISHAN BANGLA</span> Broadcast Suite
+                                    </p>
                                 </div>
                             </div>
                             <button 
                                 onClick={() => setShowSettings(true)}
-                                className={`h-10 w-10 rounded-full flex items-center justify-center transition-all ${apiKey ? 'bg-slate-800 text-slate-400 hover:bg-slate-700/80 hover:text-white' : 'bg-red-500/10 text-red-500 ring-2 ring-red-500 animate-pulse'}`}
+                                className={`h-10 w-10 rounded-full flex items-center justify-center transition-all duration-300 shadow-md
+                                    ${apiKey 
+                                        ? (isDark ? 'bg-slate-800 text-slate-400 hover:bg-slate-700/80 hover:text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800') 
+                                        : 'bg-red-500/10 text-red-500 ring-2 ring-red-500 animate-pulse'
+                                    }`}
+                                title="Settings"
                             >
                                 <i className="fa-solid fa-gear"></i>
                             </button>
@@ -361,29 +439,32 @@
                         {/* LEFT PANEL: Controls */}
                         <div className="lg:col-span-4 space-y-8">
                             
-                            {/* Category Selector */}
-                            <div className="bg-[#1f2937] p-6 rounded-2xl shadow-xl border border-slate-800">
+                            {/* Segment Selector (UPDATED) */}
+                            <div className={`${bgCard} p-6 rounded-2xl shadow-xl border ${borderSubtle}`}>
                                 <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-4">SEGMENT TYPE</h3>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {categories.map((cat) => (
-                                        <button 
-                                            key={cat.id}
-                                            onClick={() => setCategory(cat.id)}
-                                            className={`p-4 rounded-xl text-sm font-semibold transition-all flex items-center gap-3 shadow-md
-                                                ${category === cat.id 
-                                                ? 'bg-red-700 border-red-500 text-white shadow-red-900/40 neon-button' 
-                                                : 'bg-[#293547] border border-[#2e3a4e] text-slate-300 hover:bg-[#323f53] hover:text-white'
-                                            }`}
-                                        >
-                                            <i className={`fa-solid ${cat.icon} text-lg`}></i>
-                                            {cat.label}
-                                        </button>
-                                    ))}
+                                <div className="grid grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                    {categories.map((cat) => {
+                                        const isSelected = category === cat.id;
+                                        return (
+                                            <button 
+                                                key={cat.id}
+                                                onClick={() => setCategory(cat.id)}
+                                                className={`p-4 rounded-xl text-sm font-semibold transition-all flex items-center gap-3 shadow-md
+                                                    ${isSelected 
+                                                    ? `${cat.color} border-2 border-white text-white shadow-xl shadow-red-900/50 neon-button` // Use the specific color
+                                                    : `${isDark ? 'bg-[#293547] border border-[#2e3a4e] text-slate-300' : 'bg-slate-100 border border-slate-300 text-slate-700'} ${bgControlHover}`
+                                                }`}
+                                            >
+                                                <i className={`fa-solid ${cat.icon} text-lg`}></i>
+                                                {cat.label}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
                             {/* Pace Control Buttons */}
-                            <div className="bg-[#1f2937] p-6 rounded-2xl shadow-xl border border-slate-800">
+                            <div className={`${bgCard} p-6 rounded-2xl shadow-xl border ${borderSubtle}`}>
                                 <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-4">SPEAKING PACE</h3>
                                 <div className="grid grid-cols-4 gap-2">
                                     {[1, 2, 3, 4].map(level => (
@@ -393,7 +474,7 @@
                                             className={`py-3 rounded-xl text-lg font-extrabold transition-all border
                                                 ${speedLevel === level 
                                                 ? 'bg-red-700 border-red-500 text-white shadow-red-900/40 neon-button' 
-                                                : 'bg-[#293547] border-[#2e3a4e] text-slate-300 hover:bg-[#323f53] hover:text-white'
+                                                : `${isDark ? 'bg-[#293547] border-[#2e3a4e] text-slate-300' : 'bg-slate-100 border-slate-300 text-slate-700'} ${bgControlHover}`
                                             }`}
                                             title={getSpeedInstruction(level).split(',')[0]}
                                         >
@@ -401,78 +482,68 @@
                                         </button>
                                     ))}
                                 </div>
-                                <p className="text-xs text-slate-400 mt-3 text-center">
+                                <p className={`text-xs ${textMuted} mt-3 text-center`}>
                                     Current: <span className="text-red-400 font-semibold">{getSpeedInstruction(speedLevel).split(',')[0]}</span>
                                 </p>
                             </div>
 
-                            {/* Voice Selector */}
-                            <div className="bg-[#1f2937] p-6 rounded-2xl shadow-xl border border-slate-800">
-                                <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-4">VOICE TALENT</h3>
-                                <div className="space-y-2 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
-                                    {voices.map((v, i) => {
-                                        if (v.title) return (
-                                            <div key={i} className="text-[10px] font-bold text-slate-500 uppercase pt-4 pb-1 tracking-widest">{v.title}</div>
-                                        );
-                                        
-                                        const isPreviewLoading = previewingVoice === v.name;
-                                        
-                                        return (
-                                            <div 
-                                                key={v.name}
-                                                className={`w-full p-3 rounded-lg border transition-all flex items-center justify-between group cursor-pointer
-                                                    ${voice === v.name 
-                                                    ? 'bg-[#293547] border-red-600 ring-1 ring-red-600 shadow-md shadow-red-900/10' 
-                                                    : 'bg-[#242c38] border-slate-800 hover:border-slate-700 hover:bg-[#2e3644]'
-                                                }`}
-                                                onClick={() => setVoice(v.name)}
-                                            >
-                                                <div className="flex-1">
-                                                    <div className={`text-sm font-semibold ${voice === v.name ? 'text-red-400' : 'text-slate-300'}`}>{v.label}</div>
-                                                    <div className="text-xs text-slate-500 mt-0.5">{v.desc}</div>
-                                                </div>
-                                                
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); generateVoicePreview(v.name); }}
-                                                    disabled={isPreviewLoading}
-                                                    className={`ml-3 px-3 py-1 text-xs font-medium rounded-full flex items-center gap-1 transition-colors
-                                                        ${isPreviewLoading 
-                                                            ? 'bg-red-800 text-white cursor-not-allowed' 
-                                                            : 'bg-red-600 text-white hover:bg-red-500 neon-button'
-                                                        }`}
-                                                >
-                                                    {isPreviewLoading ? (
-                                                        <>
-                                                            <i className="fa-solid fa-spinner fa-spin"></i>
-                                                            Load
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <i className="fa-solid fa-volume-high"></i>
-                                                            {voice === v.name ? 'Selected' : 'Preview'}
-                                                        </>
-                                                    )}
-                                                </button>
-                                            </div>
-                                        )
-                                    })}
+                            {/* Pitch Control Buttons */}
+                            <div className={`${bgCard} p-6 rounded-2xl shadow-xl border ${borderSubtle}`}>
+                                <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-4">VOICE PITCH/TONE</h3>
+                                <div className="grid grid-cols-3 gap-3">
+                                    {pitchOptions.map(p => (
+                                        <button
+                                            key={p.id}
+                                            onClick={() => setPitch(p.id)}
+                                            className={`p-3 rounded-xl text-sm font-semibold transition-all flex flex-col items-center justify-center shadow-md
+                                                ${pitch === p.id 
+                                                ? 'bg-red-700 border-red-500 text-white shadow-red-900/40 neon-button' 
+                                                : `${isDark ? 'bg-[#293547] border border-[#2e3a4e] text-slate-300' : 'bg-slate-100 border border-slate-300 text-slate-700'} ${bgControlHover}`
+                                            }`}
+                                        >
+                                            <i className={`fa-solid ${p.id === 'low' ? 'fa-volume-down' : p.id === 'high' ? 'fa-volume-up' : 'fa-volume-mute'} text-lg mb-1`}></i>
+                                            <span className="text-xs">{p.label}</span>
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
+                            
+                            {/* Language Hint Selector */}
+                            <div className={`${bgCard} p-6 rounded-2xl shadow-xl border ${borderSubtle}`}>
+                                <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-4">LANGUAGE HINT</h3>
+                                <div className="grid grid-cols-3 gap-3">
+                                    {languageOptions.map(lang => (
+                                        <button 
+                                            key={lang.id}
+                                            onClick={() => setTargetLanguage(lang.id)}
+                                            className={`p-3 rounded-xl text-sm font-semibold transition-all flex flex-col items-center justify-center text-center shadow-md
+                                                ${targetLanguage === lang.id 
+                                                ? 'bg-red-700 border-red-500 text-white shadow-red-900/40 neon-button' 
+                                                : `${isDark ? 'bg-[#293547] border border-[#2e3a4e] text-slate-300' : 'bg-slate-100 border border-slate-300 text-slate-700'} ${bgControlHover}`
+                                            }`}
+                                        >
+                                            <i className={`fa-solid ${lang.id === 'bengali' ? 'fa-bahai' : lang.id === 'english' ? 'fa-a' : 'fa-language'} text-lg mb-1`}></i>
+                                            <span className="text-xs">{lang.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
                         </div>
 
                         {/* CENTER/RIGHT PANEL: Script & Output */}
                         <div className="lg:col-span-8 flex flex-col h-full gap-6">
                             
                             {/* Script Editor */}
-                            <div className="flex-1 bg-[#1f2937] rounded-2xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col">
-                                <div className="bg-[#11141f] px-6 py-3 border-b border-slate-800 flex justify-between items-center">
-                                    <span className="text-sm font-bold text-slate-400 uppercase tracking-wider">Teleprompter Script</span>
-                                    <span className={`text-xs font-medium ${script.length > MAX_SCRIPT_LENGTH ? 'text-red-400' : 'text-slate-500'}`}>
+                            <div className={`flex-1 ${bgCard} rounded-2xl border ${borderSubtle} shadow-2xl overflow-hidden flex flex-col`}>
+                                <div className={`${isDark ? 'bg-[#11141f]' : 'bg-slate-50'} px-6 py-3 border-b ${borderSubtle} flex justify-between items-center`}>
+                                    <span className={`text-sm font-bold ${textMuted} uppercase tracking-wider`}>Teleprompter Script</span>
+                                    <span className={`text-xs font-medium ${script.length > MAX_SCRIPT_LENGTH ? 'text-red-400' : textMuted}`}>
                                         {script.length} / {MAX_SCRIPT_LENGTH} chars
                                     </span>
                                 </div>
                                 <textarea 
-                                    className="flex-1 w-full bg-transparent p-6 outline-none resize-none text-xl leading-relaxed text-white bengali-text placeholder:text-slate-600"
+                                    className={`flex-1 w-full bg-transparent p-6 outline-none resize-none text-xl leading-relaxed ${textPrimary} bengali-text ${isDark ? 'placeholder:text-slate-600' : 'placeholder:text-slate-400'}`}
                                     placeholder="Enter your news script here (Bengali or English)..."
                                     value={script}
                                     onChange={handleScriptChange}
@@ -488,7 +559,7 @@
                             )}
 
                             {/* Action Area */}
-                            <div className="bg-[#1f2937] rounded-2xl border border-slate-800 p-6 shadow-2xl">
+                            <div className={`${bgCard} rounded-2xl border ${borderSubtle} p-6 shadow-2xl`}>
                                 
                                 {!audioSrc && (
                                     <button 
@@ -496,7 +567,7 @@
                                         disabled={loading || script.length === 0 || script.length > MAX_SCRIPT_LENGTH || !apiKey}
                                         className={`w-full py-4 rounded-xl font-bold text-lg shadow-xl transition-all flex items-center justify-center gap-3
                                             ${(loading || script.length === 0 || script.length > MAX_SCRIPT_LENGTH || !apiKey)
-                                            ? 'bg-slate-700 text-slate-400 cursor-not-allowed' 
+                                            ? `${isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-300 text-slate-500'} cursor-not-allowed` 
                                             : 'bg-red-700 hover:bg-red-600 text-white shadow-red-900/40 neon-button'}
                                         `}
                                     >
@@ -513,18 +584,71 @@
                                         )}
                                     </button>
                                 )}
+                                {/* Voice Selector (Moved to the bottom for better layout) */}
+                                <div className={`${bgCard} p-6 rounded-2xl shadow-xl border ${borderSubtle} mt-6`}>
+                                    <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-4">VOICE TALENT</h3>
+                                    <div className="space-y-2 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
+                                        {voices.map((v, i) => {
+                                            if (v.title) return (
+                                                <div key={i} className={`text-[10px] font-bold ${isDark ? 'text-slate-500' : 'text-slate-400'} uppercase pt-4 pb-1 tracking-widest`}>{v.title}</div>
+                                            );
+                                            
+                                            const isPreviewLoading = previewingVoice === v.name;
+                                            
+                                            return (
+                                                <div 
+                                                    key={v.name}
+                                                    className={`w-full p-3 rounded-lg border transition-all flex items-center justify-between group cursor-pointer
+                                                        ${voice === v.name 
+                                                        ? 'bg-red-500/10 border-red-600 ring-1 ring-red-600 shadow-md shadow-red-900/10' 
+                                                        : isDark ? 'bg-[#242c38] border-slate-800 hover:border-slate-700 hover:bg-[#2e3644]' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                                                    }`}
+                                                    onClick={() => setVoice(v.name)}
+                                                >
+                                                    <div className="flex-1">
+                                                        <div className={`text-sm font-semibold ${voice === v.name ? 'text-red-400' : textPrimary}`}>{v.label}</div>
+                                                        <div className={`text-xs ${textMuted} mt-0.5`}>{v.desc}</div>
+                                                    </div>
+                                                    
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); generateVoicePreview(v.name); }}
+                                                        disabled={isPreviewLoading}
+                                                        className={`ml-3 px-3 py-1 text-xs font-medium rounded-full flex items-center gap-1 transition-colors
+                                                            ${isPreviewLoading 
+                                                                ? 'bg-red-800 text-white cursor-not-allowed' 
+                                                                : 'bg-red-600 text-white hover:bg-red-500 neon-button'
+                                                            }`}
+                                                    >
+                                                        {isPreviewLoading ? (
+                                                            <>
+                                                                <i className="fa-solid fa-spinner fa-spin"></i>
+                                                                Load
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <i className="fa-solid fa-volume-high"></i>
+                                                                {voice === v.name ? 'Selected' : 'Preview'}
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+
 
                                 {/* Audio Player */}
                                 {audioSrc && (
                                     <div className="animate-fade-in">
-                                        <div className="flex items-center justify-between mb-5 pb-5 border-b border-slate-700">
+                                        <div className={`flex items-center justify-between mb-5 pb-5 border-b ${borderSubtle}`}>
                                             <div className="flex items-center gap-4">
                                                 <div className="h-12 w-12 bg-green-500/10 rounded-full flex items-center justify-center border border-green-700 text-green-500 shadow-md shadow-green-900/20">
                                                     <i className="fa-solid fa-check text-xl"></i>
                                                 </div>
                                                 <div>
-                                                    <h3 className="font-bold text-white text-xl">Broadcast Complete</h3>
-                                                    <p className="text-sm text-slate-400">
+                                                    <h3 className={`font-bold ${textPrimary} text-xl`}>Broadcast Complete</h3>
+                                                    <p className={`text-sm ${textMuted}`}>
                                                         Voice: {voices.find(v => v.name === voice)?.label} • Pace: {speedLevel}x
                                                     </p>
                                                 </div>
@@ -538,10 +662,10 @@
                                         <audio controls src={audioSrc} className="w-full h-10 mb-6 bg-slate-800 rounded-lg" autoPlay></audio>
                                         
                                         <div className="grid grid-cols-2 gap-4">
-                                            <button onClick={() => setAudioSrc(null)} className="py-3 rounded-xl text-sm font-semibold bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors">
+                                            <button onClick={() => setAudioSrc(null)} className={`py-3 rounded-xl text-sm font-semibold ${isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'} transition-colors`}>
                                                 New Script
                                             </button>
-                                            <a href={audioSrc} download={`news-${category.toLowerCase().replace(' ', '-')}-${voice}.wav`} className="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold bg-red-600 text-white hover:bg-red-500 transition-colors neon-button">
+                                            <a href={audioSrc} download={`news-${category.toLowerCase().replace(/[\s&]+/g, '-')}-${voice}.wav`} className="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold bg-red-600 text-white hover:bg-red-500 transition-colors neon-button">
                                                 <i className="fa-solid fa-download"></i> Download WAV
                                             </a>
                                         </div>
@@ -555,33 +679,58 @@
                     {/* Settings Modal */}
                     {showSettings && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-                            <div className="bg-[#1f2937] rounded-2xl border border-slate-700 w-full max-w-md shadow-2xl overflow-hidden">
-                                <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-[#11141f]">
-                                    <h2 className="text-xl font-bold text-white">Studio Settings</h2>
-                                    <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-red-400 transition-colors">
+                            <div className={`${bgCard} rounded-2xl border ${borderSubtle} w-full max-w-md shadow-2xl overflow-hidden`}>
+                                <div className={`p-6 border-b ${borderSubtle} flex justify-between items-center ${isDark ? 'bg-[#11141f]' : 'bg-slate-50'}`}>
+                                    <h2 className={`text-xl font-bold ${textHeader}`}>Studio Settings</h2>
+                                    <button onClick={() => setShowSettings(false)} className={`${textMuted} hover:text-red-400 transition-colors`}>
                                         <i className="fa-solid fa-xmark text-xl"></i>
                                     </button>
                                 </div>
-                                <div className="p-6 space-y-4">
+                                <div className="p-6 space-y-6">
+                                    
+                                    {/* Theme Toggle */}
+                                    <div>
+                                        <label className="block text-xs font-bold text-red-500 uppercase tracking-widest mb-2">Theme</label>
+                                        <div className="flex items-center space-x-4">
+                                            <button 
+                                                onClick={() => setTheme('dark')}
+                                                className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${isDark ? 'bg-red-600 text-white' : `${isDark ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-600 bg-slate-100 hover:bg-slate-200'}`}`}
+                                            >
+                                                <i className="fa-solid fa-moon"></i> Dark
+                                            </button>
+                                            <button 
+                                                onClick={() => setTheme('light')}
+                                                className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all ${!isDark ? 'bg-red-600 text-white' : `${isDark ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-600 bg-slate-100 hover:bg-slate-200'}`}`}
+                                            >
+                                                <i className="fa-solid fa-sun"></i> Light
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* API Key Instructions (IMPROVED) */}
                                     <div>
                                         <label className="block text-xs font-bold text-red-500 uppercase tracking-widest mb-2">Google Gemini API Key</label>
                                         <div className="relative">
-                                            <i className="fa-solid fa-key absolute left-3 top-3.5 text-slate-500"></i>
+                                            <i className={`fa-solid fa-key absolute left-3 top-3.5 ${textMuted}`}></i>
                                             <input 
                                                 type="password" 
-                                                className="w-full bg-[#11141f] border border-slate-800 rounded-lg py-3 pl-10 pr-4 text-sm text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-all placeholder:text-slate-600"
+                                                className={`w-full rounded-lg py-3 pl-10 pr-4 text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-all ${bgInput}`}
                                                 placeholder="Paste key starting with AIza..."
                                                 value={apiKey}
                                                 onChange={(e) => setApiKey(e.target.value)}
                                             />
                                         </div>
-                                        <p className="text-[11px] text-slate-500 mt-2">
-                                            Your key is required to access the Neural Audio engine. 
-                                            <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-red-400 hover:underline ml-1">Get one here</a>.
-                                        </p>
+                                        <div className={`text-xs ${textMuted} mt-3 space-y-2 p-3 ${isDark ? 'bg-[#11141f] border border-slate-800 rounded-lg' : 'bg-slate-50 border border-slate-200 rounded-lg'}`}>
+                                            <p className="font-semibold text-red-400">How to get your API Key:</p>
+                                            <ol className="list-decimal list-inside ml-2 space-y-1">
+                                                <li>Go to the <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-red-400 hover:underline font-normal">Google AI Studio Key Page</a>.</li>
+                                                <li>Click **"Create API key"** and copy the generated string.</li>
+                                                <li>Paste the key into the field above and click **Save**.</li>
+                                            </ol>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="p-4 bg-[#11141f] flex justify-end">
+                                <div className={`p-4 ${isDark ? 'bg-[#11141f]' : 'bg-slate-50'} flex justify-end`}>
                                     <button 
                                         onClick={() => setShowSettings(false)}
                                         className="px-6 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-500 transition-colors neon-button"

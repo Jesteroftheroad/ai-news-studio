@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI News Reader Studio</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0d111c; color: #f8fafc; }
+        .bengali-text { font-family: 'Noto Sans Bengali', sans-serif; }
+        
+        /* Neon Button Effect */
+        .neon-button {
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 0 5px rgba(239, 68, 68, 0);
+        }
+        .neon-button:hover {
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.6), inset 0 0 5px rgba(239, 68, 68, 0.3);
+            transform: translateY(-1px);
+        }
+        
+        /* Audio Visualizer Animation */
+        .bar-container { height: 28px; display: flex; align-items: flex-end; gap: 2px; }
+        .bar {
+            width: 4px;
+            background: #ef4444;
+            animation: bounce 1s infinite ease-in-out;
+            border-radius: 99px;
+        }
+        .bar:nth-child(1) { height: 14px; animation-delay: 0.1s; }
+        .bar:nth-child(2) { height: 24px; animation-delay: 0.2s; }
+        .bar:nth-child(3) { height: 18px; animation-delay: 0.3s; }
+        .bar:nth-child(4) { height: 28px; animation-delay: 0.4s; }
+        .bar:nth-child(5) { height: 20px; animation-delay: 0.5s; }
+
+        @keyframes bounce {
+            0%, 100% { transform: scaleY(1); }
+            50% { transform: scaleY(1.5); }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // --- CONSTANTS ---
+        const MAX_SCRIPT_LENGTH = 1500; // Hard character limit for stability
+        const MAX_RETRIES = 5;
+        const PREVIEW_SCRIPT = "Ishan Bangla news e apnake swagato janai"; // Bengali: "Ishan Bangla news welcomes you"
+
+        const speedMap = {
+            1: 1.0, // Normal
+            2: 1.2, // Brisk
+            3: 1.5, // Fast
+            4: 1.8, // Urgent
+        };
+        
+        // Helper functions (PCM to WAV conversion and utility)
+        const pcmToWav = (pcmData, sampleRate = 24000) => {
+            const buffer = new ArrayBuffer(44 + pcmData.length);
+            const view = new DataView(buffer);
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + pcmData.length, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true); // PCM format
+            view.setUint16(22, 1, true); // Mono
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true);
+            view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true);
+            writeString(view, 36, 'data');
+            view.setUint32(40, pcmData.length, true);
+            const pcmView = new Uint8Array(buffer, 44);
+            pcmView.set(pcmData);
+            return buffer;
+        };
+
+        const writeString = (view, offset, string) => {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        };
+
+        const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+        // End Helper functions
+
+        const App = () => {
+            const [apiKey, setApiKey] = React.useState('');
+            const [script, setScript] = React.useState('');
+            const [category, setCategory] = React.useState('General News');
+            const [voice, setVoice] = React.useState('Puck'); 
+            const [speedLevel, setSpeedLevel] = React.useState(2); // Discrete level: 1, 2, 3, 4
+            const [loading, setLoading] = React.useState(false);
+            const [audioSrc, setAudioSrc] = React.useState(null);
+            const [error, setError] = React.useState('');
+            const [showSettings, setShowSettings] = React.useState(false);
+            
+            // New states for voice preview
+            const [previewAudioSrc, setPreviewAudioSrc] = React.useState(null);
+            const [previewingVoice, setPreviewingVoice] = React.useState(null);
+
+            // Expanded Gemini Voice Personas
+            const voices = [
+                { id: 'general', title: 'Standard Broadcast' },
+                { name: 'Puck', label: 'Classic Anchor (M)', desc: 'Balanced & Neutral', type: 'general' },
+                { name: 'Kore', label: 'Studio Host (F)', desc: 'Calm & Professional', type: 'general' },
+                
+                { id: 'serious', title: 'Crime & Impact' },
+                // UPDATED: Using FENRIR for the rough, aggressive tone
+                { name: 'Fenrir', label: 'Confrontational Anchor (M)', desc: 'Rough, Intense, and Confrontational (Fighting Style)', type: 'serious' },
+                { name: 'Charon', label: 'Crime Desk (M)', desc: 'Deep, Grave, Serious', type: 'serious' },
+                { name: 'Orus', label: 'Political (M)', desc: 'Firm & Commanding', type: 'serious' },
+                { name: 'Algenib', label: 'High Stakes Reporter (M)', desc: 'Gravelly, Deep, for Urgent Situations', type: 'serious' },
+
+                { id: 'solemn', title: 'Memorial & Solemn' },
+                { name: 'Vindemiatrix', label: 'Solemn Reporter (F)', desc: 'Gentle, Subdued, for Memorials or Tragedy', type: 'solemn' },
+
+
+                { id: 'energetic', title: 'Energy & Lifestyle' },
+                { name: 'Aoede', label: 'Lifestyle (F)', desc: 'Bright & Engaging', type: 'energetic' },
+                { name: 'Zephyr', label: 'Morning Show (F)', desc: 'High Energy & Fast', type: 'energetic' },
+            ];
+
+            const categories = [
+                { id: 'General News', label: 'News', icon: 'fa-newspaper', promptMod: 'professional and informative' },
+                { id: 'Breaking News', label: 'Breaking', icon: 'fa-bolt', promptMod: 'urgent, fast-paced, and serious' },
+                { id: 'Crime Report', label: 'Crime', icon: 'fa-handcuffs', promptMod: 'grave, serious, and storytelling' },
+                { id: 'Sports', label: 'Sports', icon: 'fa-trophy', promptMod: 'energetic, exciting, and dynamic' },
+                { id: 'Weather', label: 'Weather', icon: 'fa-cloud-sun', promptMod: 'calm, clear, and helpful' },
+            ];
+
+            const getSpeedInstruction = (level) => {
+                if (level === 1) return "normal, professional conversational pace";
+                if (level === 2) return "brisk, slightly faster pace";
+                if (level === 3) return "very fast, urgent, and rapid pace";
+                if (level === 4) return "extremely fast, urgent, and highly rapid pace";
+                return "normal, professional conversational pace";
+            };
+            
+            const handleScriptChange = (e) => {
+                const newScript = e.target.value;
+                if (newScript.length <= MAX_SCRIPT_LENGTH) {
+                    setScript(newScript);
+                }
+            };
+            
+            // --- Voice Preview Function ---
+            const generateVoicePreview = async (voiceName) => {
+                if (!apiKey) {
+                    setShowSettings(true);
+                    setError('Please save your API Key in settings first.');
+                    return;
+                }
+                setPreviewingVoice(voiceName);
+                setPreviewAudioSrc(null); 
+
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: PREVIEW_SCRIPT }] }],
+                            generationConfig: {
+                                responseModalities: ["AUDIO"],
+                                speechConfig: {
+                                    voiceConfig: {
+                                        prebuiltVoiceConfig: {
+                                            voiceName: voiceName
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                    });
+
+                    const data = await response.json();
+                    
+                    const inlineData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+                    
+                    if (inlineData) {
+                        const binaryString = window.atob(inlineData.data);
+                        const len = binaryString.length;
+                        const bytes = new Uint8Array(len);
+                        for (let i = 0; i < len; i++) {
+                            bytes[i] = binaryString.charCodeAt(i);
+                        }
+
+                        const wavBuffer = pcmToWav(bytes);
+                        const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+                        const audioUrl = URL.createObjectURL(blob);
+                        
+                        setPreviewAudioSrc(audioUrl);
+                        
+                        const audio = new Audio(audioUrl);
+                        audio.onended = () => {
+                            setPreviewingVoice(null); 
+                            setPreviewAudioSrc(null); 
+                        };
+                        audio.play().catch(e => {
+                            console.error("Autoplay prevented:", e);
+                            setPreviewingVoice(null);
+                        });
+                        
+                    } else {
+                        throw new Error("No audio data received for preview.");
+                    }
+
+                } catch (err) {
+                    setError("Preview failed: " + err.message);
+                    setPreviewingVoice(null);
+                }
+            };
+            // --- End Voice Preview Function ---
+
+
+            // --- Main Voiceover Generation Function (with Backoff) ---
+            const generateVoiceover = async () => {
+                if (!apiKey) {
+                    setShowSettings(true);
+                    setError('Please save your API Key in settings first.');
+                    return;
+                }
+                if (!script) {
+                    setError('Please enter a news script.');
+                    return;
+                }
+                if (script.length > MAX_SCRIPT_LENGTH) {
+                    setError(`Script is too long. Max allowed characters is ${MAX_SCRIPT_LENGTH}.`);
+                    return;
+                }
+                
+                setLoading(true);
+                setError('');
+                setAudioSrc(null);
+
+                const selectedCategory = categories.find(c => c.id === category);
+                const speedText = getSpeedInstruction(speedLevel);
+                let toneInstruction = selectedCategory.promptMod;
+
+                // CRITICAL TONE ADJUSTMENT FOR THE CONFRONTATIONAL VOICE
+                if (voice === 'Fenrir') {
+                    toneInstruction = 'extremely rough, gravelly, and confrontational. Use a deeply tense and dramatic delivery, like a debate anchor who is highly agitated and aggressive.';
+                }
+                
+                const finalPrompt = `
+                    You are a professional Bengali news anchor for "AI News Reader" by Ishan Bangla.
+                    Your task is to read the following script aloud.
+                    
+                    Context: This is a ${category} segment.
+                    Tone Instruction: Read this in an ${toneInstruction} tone.
+                    Pace Instruction: Read this at a ${speedText}.
+                    Language: Detect if the script is Bengali or English and pronounce accordingly.
+                    
+                    Script:
+                    "${script}"
+                `;
+
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+                
+                for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+                    try {
+                        const response = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{ parts: [{ text: finalPrompt }] }],
+                                generationConfig: {
+                                    responseModalities: ["AUDIO"],
+                                    speechConfig: {
+                                        voiceConfig: {
+                                            prebuiltVoiceConfig: {
+                                                voiceName: voice
+                                            }
+                                        }
+                                    }
+                                }
+                            })
+                        });
+
+                        const data = await response.json();
+
+                        if (data.error) throw new Error(data.error.message);
+                        
+                        const inlineData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+                        
+                        if (inlineData) {
+                            const binaryString = window.atob(inlineData.data);
+                            const len = binaryString.length;
+                            const bytes = new Uint8Array(len);
+                            for (let i = 0; i < len; i++) {
+                                bytes[i] = binaryString.charCodeAt(i);
+                            }
+
+                            const wavBuffer = pcmToWav(bytes);
+                            const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+                            const audioUrl = URL.createObjectURL(blob);
+                            setAudioSrc(audioUrl);
+                            setLoading(false);
+                            return; 
+                        } else {
+                            throw new Error("No audio data received. The model might have refused the request.");
+                        }
+
+                    } catch (err) {
+                        if (attempt === MAX_RETRIES - 1) {
+                            setError(err.message || "Failed to generate audio after multiple retries.");
+                            setLoading(false);
+                            return;
+                        }
+                        
+                        const waitTime = Math.pow(2, attempt) * 1000;
+                        await delay(waitTime);
+                    }
+                }
+            };
+            // --- End Main Voiceover Generation Function ---
+
+
+            // --- Component Rendering ---
+            return (
+                <div className="min-h-screen bg-[#0d111c] text-slate-100 font-sans selection:bg-red-500 selection:text-white">
+                    
+                    {/* Top Navigation Bar */}
+                    <nav className="border-b border-slate-800 bg-[#11141f] backdrop-blur-md sticky top-0 z-20">
+                        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="h-12 w-12 flex items-center justify-center rounded-lg shadow-2xl shadow-red-500/30 ring-2 ring-red-600 bg-[#1f2937] text-red-500">
+                                    <i className="fa-solid fa-microphone-lines text-2xl"></i>
+                                </div>
+                                <div>
+                                    <h1 className="font-extrabold text-2xl leading-tight tracking-tight text-white">AI News Studio</h1>
+                                    <p className="text-[10px] text-slate-400 font-medium uppercase tracking-[0.2em]">Ishan Bangla Broadcast Suite</p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setShowSettings(true)}
+                                className={`h-10 w-10 rounded-full flex items-center justify-center transition-all ${apiKey ? 'bg-slate-800 text-slate-400 hover:bg-slate-700/80 hover:text-white' : 'bg-red-500/10 text-red-500 ring-2 ring-red-500 animate-pulse'}`}
+                            >
+                                <i className="fa-solid fa-gear"></i>
+                            </button>
+                        </div>
+                    </nav>
+
+                    <main className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        
+                        {/* LEFT PANEL: Controls */}
+                        <div className="lg:col-span-4 space-y-8">
+                            
+                            {/* Category Selector */}
+                            <div className="bg-[#1f2937] p-6 rounded-2xl shadow-xl border border-slate-800">
+                                <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-4">SEGMENT TYPE</h3>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {categories.map((cat) => (
+                                        <button 
+                                            key={cat.id}
+                                            onClick={() => setCategory(cat.id)}
+                                            className={`p-4 rounded-xl text-sm font-semibold transition-all flex items-center gap-3 shadow-md
+                                                ${category === cat.id 
+                                                ? 'bg-red-700 border-red-500 text-white shadow-red-900/40 neon-button' 
+                                                : 'bg-[#293547] border border-[#2e3a4e] text-slate-300 hover:bg-[#323f53] hover:text-white'
+                                            }`}
+                                        >
+                                            <i className={`fa-solid ${cat.icon} text-lg`}></i>
+                                            {cat.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Pace Control Buttons */}
+                            <div className="bg-[#1f2937] p-6 rounded-2xl shadow-xl border border-slate-800">
+                                <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-4">SPEAKING PACE</h3>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {[1, 2, 3, 4].map(level => (
+                                        <button
+                                            key={level}
+                                            onClick={() => setSpeedLevel(level)}
+                                            className={`py-3 rounded-xl text-lg font-extrabold transition-all border
+                                                ${speedLevel === level 
+                                                ? 'bg-red-700 border-red-500 text-white shadow-red-900/40 neon-button' 
+                                                : 'bg-[#293547] border-[#2e3a4e] text-slate-300 hover:bg-[#323f53] hover:text-white'
+                                            }`}
+                                            title={getSpeedInstruction(level).split(',')[0]}
+                                        >
+                                            {level}x
+                                        </button>
+                                    ))}
+                                </div>
+                                <p className="text-xs text-slate-400 mt-3 text-center">
+                                    Current: <span className="text-red-400 font-semibold">{getSpeedInstruction(speedLevel).split(',')[0]}</span>
+                                </p>
+                            </div>
+
+                            {/* Voice Selector */}
+                            <div className="bg-[#1f2937] p-6 rounded-2xl shadow-xl border border-slate-800">
+                                <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-4">VOICE TALENT</h3>
+                                <div className="space-y-2 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
+                                    {voices.map((v, i) => {
+                                        if (v.title) return (
+                                            <div key={i} className="text-[10px] font-bold text-slate-500 uppercase pt-4 pb-1 tracking-widest">{v.title}</div>
+                                        );
+                                        
+                                        const isPreviewLoading = previewingVoice === v.name;
+                                        
+                                        return (
+                                            <div 
+                                                key={v.name}
+                                                className={`w-full p-3 rounded-lg border transition-all flex items-center justify-between group cursor-pointer
+                                                    ${voice === v.name 
+                                                    ? 'bg-[#293547] border-red-600 ring-1 ring-red-600 shadow-md shadow-red-900/10' 
+                                                    : 'bg-[#242c38] border-slate-800 hover:border-slate-700 hover:bg-[#2e3644]'
+                                                }`}
+                                                onClick={() => setVoice(v.name)}
+                                            >
+                                                <div className="flex-1">
+                                                    <div className={`text-sm font-semibold ${voice === v.name ? 'text-red-400' : 'text-slate-300'}`}>{v.label}</div>
+                                                    <div className="text-xs text-slate-500 mt-0.5">{v.desc}</div>
+                                                </div>
+                                                
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); generateVoicePreview(v.name); }}
+                                                    disabled={isPreviewLoading}
+                                                    className={`ml-3 px-3 py-1 text-xs font-medium rounded-full flex items-center gap-1 transition-colors
+                                                        ${isPreviewLoading 
+                                                            ? 'bg-red-800 text-white cursor-not-allowed' 
+                                                            : 'bg-red-600 text-white hover:bg-red-500 neon-button'
+                                                        }`}
+                                                >
+                                                    {isPreviewLoading ? (
+                                                        <>
+                                                            <i className="fa-solid fa-spinner fa-spin"></i>
+                                                            Load
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <i className="fa-solid fa-volume-high"></i>
+                                                            {voice === v.name ? 'Selected' : 'Preview'}
+                                                        </>
+                                                    )}
+                                                </button>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* CENTER/RIGHT PANEL: Script & Output */}
+                        <div className="lg:col-span-8 flex flex-col h-full gap-6">
+                            
+                            {/* Script Editor */}
+                            <div className="flex-1 bg-[#1f2937] rounded-2xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col">
+                                <div className="bg-[#11141f] px-6 py-3 border-b border-slate-800 flex justify-between items-center">
+                                    <span className="text-sm font-bold text-slate-400 uppercase tracking-wider">Teleprompter Script</span>
+                                    <span className={`text-xs font-medium ${script.length > MAX_SCRIPT_LENGTH ? 'text-red-400' : 'text-slate-500'}`}>
+                                        {script.length} / {MAX_SCRIPT_LENGTH} chars
+                                    </span>
+                                </div>
+                                <textarea 
+                                    className="flex-1 w-full bg-transparent p-6 outline-none resize-none text-xl leading-relaxed text-white bengali-text placeholder:text-slate-600"
+                                    placeholder="Enter your news script here (Bengali or English)..."
+                                    value={script}
+                                    onChange={handleScriptChange}
+                                ></textarea>
+                            </div>
+
+                            {/* Error Toast */}
+                            {error && (
+                                <div className="bg-red-500/10 border border-red-700 text-red-400 px-6 py-4 rounded-xl text-sm flex items-center gap-3 animate-fade-in shadow-lg shadow-red-900/20">
+                                    <i className="fa-solid fa-triangle-exclamation text-lg"></i>
+                                    <span className="font-semibold">{error}</span>
+                                </div>
+                            )}
+
+                            {/* Action Area */}
+                            <div className="bg-[#1f2937] rounded-2xl border border-slate-800 p-6 shadow-2xl">
+                                
+                                {!audioSrc && (
+                                    <button 
+                                        onClick={generateVoiceover}
+                                        disabled={loading || script.length === 0 || script.length > MAX_SCRIPT_LENGTH || !apiKey}
+                                        className={`w-full py-4 rounded-xl font-bold text-lg shadow-xl transition-all flex items-center justify-center gap-3
+                                            ${(loading || script.length === 0 || script.length > MAX_SCRIPT_LENGTH || !apiKey)
+                                            ? 'bg-slate-700 text-slate-400 cursor-not-allowed' 
+                                            : 'bg-red-700 hover:bg-red-600 text-white shadow-red-900/40 neon-button'}
+                                        `}
+                                    >
+                                        {loading ? (
+                                            <>
+                                                <i className="fa-solid fa-circle-notch fa-spin"></i>
+                                                Broadcasting...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <i className="fa-solid fa-bullhorn text-xl"></i>
+                                                Generate Full Voiceover
+                                            </>
+                                        )}
+                                    </button>
+                                )}
+
+                                {/* Audio Player */}
+                                {audioSrc && (
+                                    <div className="animate-fade-in">
+                                        <div className="flex items-center justify-between mb-5 pb-5 border-b border-slate-700">
+                                            <div className="flex items-center gap-4">
+                                                <div className="h-12 w-12 bg-green-500/10 rounded-full flex items-center justify-center border border-green-700 text-green-500 shadow-md shadow-green-900/20">
+                                                    <i className="fa-solid fa-check text-xl"></i>
+                                                </div>
+                                                <div>
+                                                    <h3 className="font-bold text-white text-xl">Broadcast Complete</h3>
+                                                    <p className="text-sm text-slate-400">
+                                                        Voice: {voices.find(v => v.name === voice)?.label} • Pace: {speedLevel}x
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="bar-container">
+                                                <div className="bar"></div><div className="bar"></div><div className="bar"></div>
+                                                <div className="bar"></div><div className="bar"></div>
+                                            </div>
+                                        </div>
+                                        
+                                        <audio controls src={audioSrc} className="w-full h-10 mb-6 bg-slate-800 rounded-lg" autoPlay></audio>
+                                        
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <button onClick={() => setAudioSrc(null)} className="py-3 rounded-xl text-sm font-semibold bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors">
+                                                New Script
+                                            </button>
+                                            <a href={audioSrc} download={`news-${category.toLowerCase().replace(' ', '-')}-${voice}.wav`} className="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold bg-red-600 text-white hover:bg-red-500 transition-colors neon-button">
+                                                <i className="fa-solid fa-download"></i> Download WAV
+                                            </a>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                        </div>
+                    </main>
+
+                    {/* Settings Modal */}
+                    {showSettings && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+                            <div className="bg-[#1f2937] rounded-2xl border border-slate-700 w-full max-w-md shadow-2xl overflow-hidden">
+                                <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-[#11141f]">
+                                    <h2 className="text-xl font-bold text-white">Studio Settings</h2>
+                                    <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-red-400 transition-colors">
+                                        <i className="fa-solid fa-xmark text-xl"></i>
+                                    </button>
+                                </div>
+                                <div className="p-6 space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-red-500 uppercase tracking-widest mb-2">Google Gemini API Key</label>
+                                        <div className="relative">
+                                            <i className="fa-solid fa-key absolute left-3 top-3.5 text-slate-500"></i>
+                                            <input 
+                                                type="password" 
+                                                className="w-full bg-[#11141f] border border-slate-800 rounded-lg py-3 pl-10 pr-4 text-sm text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-all placeholder:text-slate-600"
+                                                placeholder="Paste key starting with AIza..."
+                                                value={apiKey}
+                                                onChange={(e) => setApiKey(e.target.value)}
+                                            />
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 mt-2">
+                                            Your key is required to access the Neural Audio engine. 
+                                            <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-red-400 hover:underline ml-1">Get one here</a>.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="p-4 bg-[#11141f] flex justify-end">
+                                    <button 
+                                        onClick={() => setShowSettings(false)}
+                                        className="px-6 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-500 transition-colors neon-button"
+                                    >
+                                        Save & Close
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

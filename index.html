@@ -68,7 +68,7 @@ const PAUSE_SHORT_MAX = 0.4;   /* longest pause kept between sentences (s) */
 const PAUSE_LONG_MAX  = 0.65;  /* longest pause kept at paragraph breaks (s) */
 const PAUSE_LONG_FROM = 1.0;   /* gaps longer than this are paragraph breaks (s) */
 const EDGE_SILENCE    = 0.15;  /* silence kept at start and end (s) */
-const SPEED_MIN = 0.9, SPEED_MAX = 1.3;
+const SPEED_MIN = 0.75, SPEED_MAX = 1.5;
 
 const pcm16ToFloat = bytes => {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -487,6 +487,42 @@ const VoiceSelector = React.memo(({ voice, onChange, onPreview, previewingVoice,
     </div>
 ));
 
+/* ─── SPEED SLIDER ───────────────────────────────────────────
+   0 = the segment's normal pace; ±30% in 5% steps.             */
+const SPEED_STEP = 5, SPEED_RANGE = 30;
+const SpeedSlider = ({ value, onChange, baseWpm, segmentLabel, isDark, textPrimary, textMuted }) => {
+    const target = Math.round(baseWpm * (1 + value / 100));
+    const label  = value === 0 ? 'Normal' : value > 0 ? `${value}% faster` : `${-value}% slower`;
+    return (
+        <div className="mb-4">
+            <div className="flex items-center justify-between mb-1.5">
+                <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest">SPEED</h3>
+                <span className={`text-xs ${textMuted}`}>
+                    <span className={`font-semibold ${value===0?textPrimary:'text-red-400'}`}>{label}</span> · {target} words/min
+                </span>
+            </div>
+            <div className="flex items-center gap-3">
+                <button onClick={()=>onChange(Math.max(-SPEED_RANGE, value-SPEED_STEP))} title="Slower"
+                    className={`touch-target h-8 w-8 rounded-full shrink-0 ${isDark?'bg-slate-700 text-slate-300 hover:bg-slate-600':'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>
+                    <i className="fa-solid fa-minus text-xs"/>
+                </button>
+                <input type="range" min={-SPEED_RANGE} max={SPEED_RANGE} step={SPEED_STEP} value={value}
+                    onChange={e=>onChange(Number(e.target.value))}
+                    className="flex-1 accent-red-600 cursor-pointer" aria-label="Speed" />
+                <button onClick={()=>onChange(Math.min(SPEED_RANGE, value+SPEED_STEP))} title="Faster"
+                    className={`touch-target h-8 w-8 rounded-full shrink-0 ${isDark?'bg-slate-700 text-slate-300 hover:bg-slate-600':'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>
+                    <i className="fa-solid fa-plus text-xs"/>
+                </button>
+            </div>
+            <div className={`flex justify-between text-[10px] ${textMuted} mt-1 px-11`}>
+                <span>Slower</span>
+                <button onClick={()=>onChange(0)} className="hover:text-red-400">Normal for {segmentLabel}</button>
+                <span>Faster</span>
+            </div>
+        </div>
+    );
+};
+
 /* ─── SETTINGS MODAL ─────────────────────────────────────────── */
 const SettingsModal = React.memo(({ apiKey, setApiKey, theme, setTheme, onClose, onLogout, isDark, bgCard, textHeader, textMuted, bgInput, borderSubtle }) => (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-fade-in">
@@ -569,6 +605,12 @@ const Studio = ({ onLogout }) => {
     const [audioSrc,  setAudioSrc]  = React.useState(null);
     const [audioFile, setAudioFile] = React.useState('');
     const [audioWpm,  setAudioWpm]  = React.useState(0);
+    const [speedAdj,  setSpeedAdj]  = React.useState(()=>{
+        const v = Number(localStorage.getItem('speedAdj'));
+        return Number.isFinite(v) && Math.abs(v) <= SPEED_RANGE ? v : 0;
+    });
+    /* Unprocessed audio of the last voiceover, so speed can be changed without a new request */
+    const rawAudioRef = React.useRef(null);
     const [error,     setError]     = React.useState('');
     const [showSettings, setShowSettings] = React.useState(false);
     const [previewingVoice, setPreviewingVoice] = React.useState(null);
@@ -594,6 +636,21 @@ const Studio = ({ onLogout }) => {
         setAudioFile(filename);
     };
 
+    const renderVoiceover = (raw, adj) => {
+        const paced = setPace(raw.pcm, raw.rate, raw.words, raw.baseWpm * (1 + adj / 100));
+        setAudio(URL.createObjectURL(new Blob([pcmToWav(paced.pcm, raw.rate)], {type:'audio/wav'})), raw.filename);
+        setAudioWpm(paced.wpm);
+    };
+
+    const handleSpeedChange = v => { setSpeedAdj(v); localStorage.setItem('speedAdj', v); };
+
+    /* Re-time the current voiceover when the slider moves (short delay while dragging) */
+    React.useEffect(()=>{
+        if (!rawAudioRef.current) return;
+        const t = setTimeout(()=>renderVoiceover(rawAudioRef.current, speedAdj), 200);
+        return ()=>clearTimeout(t);
+    },[speedAdj]);
+
     const generateVoicePreview = async name => {
         if (!apiKey){setShowSettings(true);setError('Add your API key in Settings first.');return;}
         setPreviewingVoice(name);
@@ -601,7 +658,7 @@ const Studio = ({ onLogout }) => {
             /* Same direction as real output, so the preview sounds like the result */
             const previewPrompt = buildPrompt(PREVIEW_SCRIPT, 'Introduction', 'warm and welcoming', paceWords(150), ACCENTS[voiceInfo(name).accent]);
             const raw   = await callTTS(apiKey, name, previewPrompt);
-            const paced = setPace(raw.pcm, raw.rate, countWords(PREVIEW_SCRIPT), 150);
+            const paced = setPace(raw.pcm, raw.rate, countWords(PREVIEW_SCRIPT), 150 * (1 + speedAdj / 100));
             const url   = URL.createObjectURL(new Blob([pcmToWav(paced.pcm, raw.rate)], {type:'audio/wav'}));
             const audio = new Audio(url);
             audio.onended=()=>{URL.revokeObjectURL(url);setPreviewingVoice(null);};
@@ -615,7 +672,7 @@ const Studio = ({ onLogout }) => {
         if (!script.trim()){setError('Please enter a script.');return;}
         if (script.length>MAX_CHARS){setError(`Script too long. Max ${MAX_CHARS} chars.`);return;}
 
-        setLoading(true); setError(''); setRetryInfo(''); setAudio(null);
+        setLoading(true); setError(''); setRetryInfo(''); setAudio(null); rawAudioRef.current = null;
 
         const cat    = CATEGORIES.find(c=>c.id===category);
         const prompt = buildPrompt(script, category, cat.promptMod, paceWords(cat.wpm), ACCENTS[voiceInfo(voice).accent]);
@@ -623,12 +680,11 @@ const Studio = ({ onLogout }) => {
         try {
             for (let attempt=0; attempt<MAX_RETRIES; attempt++) {
                 try {
-                    const raw      = await callTTS(apiKey, voice, prompt);
-                    const paced    = setPace(raw.pcm, raw.rate, countWords(script), cat.wpm);
-                    const url      = URL.createObjectURL(new Blob([pcmToWav(paced.pcm, raw.rate)], {type:'audio/wav'}));
-                    setAudioWpm(paced.wpm);
-                    const filename = makeFilename(category, voiceInfo(voice).label.replace(/\s+/g,'-'));
-                    setAudio(url, filename);
+                    const raw = await callTTS(apiKey, voice, prompt);
+                    rawAudioRef.current = { ...raw, words: countWords(script), baseWpm: cat.wpm,
+                        voiceLabel: voiceInfo(voice).label, segmentLabel: cat.label,
+                        filename: makeFilename(category, voiceInfo(voice).label.replace(/\s+/g,'-')) };
+                    renderVoiceover(rawAudioRef.current, speedAdj);
                     return;
                 } catch(err) {
                     if (err.message.startsWith('QUOTA:') || attempt===MAX_RETRIES-1) {
@@ -744,6 +800,10 @@ const Studio = ({ onLogout }) => {
 
                     {/* Action card */}
                     <div className={`${bgCard} rounded-2xl border ${borderSubtle} p-4 lg:p-6 shadow-xl`}>
+                        <SpeedSlider value={speedAdj} onChange={handleSpeedChange}
+                            baseWpm={(rawAudioRef.current && audioSrc) ? rawAudioRef.current.baseWpm : CATEGORIES.find(c=>c.id===category).wpm}
+                            segmentLabel={(rawAudioRef.current && audioSrc) ? rawAudioRef.current.segmentLabel : CATEGORIES.find(c=>c.id===category).label}
+                            isDark={isDark} textPrimary={textPrimary} textMuted={textMuted} />
                         {!audioSrc && (
                             <button onClick={generateVoiceover} disabled={!canGenerate}
                                 className={`touch-target w-full py-3.5 lg:py-4 rounded-xl font-bold text-base lg:text-lg shadow-xl transition-all flex items-center justify-center gap-3
@@ -773,7 +833,7 @@ const Studio = ({ onLogout }) => {
                                         </div>
                                         <div>
                                             <p className={`font-bold ${textPrimary} text-base`}>Broadcast Ready</p>
-                                            <p className={`text-xs ${textMuted}`}>{voiceInfo(voice).label} · {CATEGORIES.find(c=>c.id===category)?.label} · {audioWpm} words/min</p>
+                                            <p className={`text-xs ${textMuted}`}>{rawAudioRef.current?.voiceLabel} · {rawAudioRef.current?.segmentLabel} · {audioWpm} words/min</p>
                                         </div>
                                     </div>
                                     <div className="bar-container">
@@ -783,7 +843,7 @@ const Studio = ({ onLogout }) => {
                                 </div>
                                 <audio controls src={audioSrc} className="w-full h-10 mb-4 rounded-lg" autoPlay></audio>
                                 <div className="grid grid-cols-2 gap-3">
-                                    <button onClick={()=>{setAudio(null);setRetryInfo('');}}
+                                    <button onClick={()=>{setAudio(null);setRetryInfo('');rawAudioRef.current=null;}}
                                         className={`touch-target py-3 rounded-xl text-sm font-semibold ${isDark?'bg-slate-700 text-slate-300 hover:bg-slate-600':'bg-slate-200 text-slate-700 hover:bg-slate-300'} transition-colors`}>
                                         <i className="fa-solid fa-file-circle-plus mr-1.5"></i>New Script
                                     </button>

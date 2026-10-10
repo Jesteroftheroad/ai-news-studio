@@ -62,7 +62,7 @@
 /* ─── CONSTANTS ──────────────────────────────────────────────── */
 const MAX_CHARS   = 1500;
 const MAX_RETRIES = 5;
-const PREVIEW_SCRIPT = "ইশান বাংলা নিউজে আপনাকে স্বাগত জানাই";
+const PREVIEW_SCRIPT = "নমস্কার, ইশান বাংলা নিউজে আপনাকে স্বাগত। আজকের প্রধান খবর, একনজরে।";
 
 /* ─── HELPERS ────────────────────────────────────────────────── */
 const delay = ms => new Promise(r => setTimeout(r, ms));
@@ -96,80 +96,75 @@ const makeFilename = (category, voiceName) => {
     return `${date}_${time}_${cat}_${voiceName}.wav`;
 };
 
-/* ─── ULTRA-MINIMAL PROMPT (~12 tokens overhead vs ~40 before) ──
-   Format: [Category | tone | speed | pitch? | lang?]\nscript     */
-const buildPrompt = (script, category, promptMod, spd, ptch, lng, voiceName, accent='') => {
-    const tone     = voiceName === 'Fenrir' ? 'aggressive & confrontational' : promptMod;
-    const pitchStr = ptch !== 'normal' ? ` | ${ptch} pitch` : '';
-    const langStr  = lng  !== 'auto'   ? ` | ${lng}`        : '';
-    const bracket  = `[${category} | ${tone} | ${spd}${pitchStr}${langStr}]`;
-    if (accent) {
-        return `${bracket}\nACCENT: ${accent}. Maintain this accent consistently throughout without switching.\n${script}`;
-    }
-    return `${bracket}\n${script}`;
-};
+/* ─── PROMPT BUILDER ─────────────────────────────────────────
+   Director's-notes style: who is speaking, accent, pauses, then the
+   transcript. Detailed direction is what keeps Gemini from sounding
+   like a flat AI narrator; the opening line stops it reading the
+   notes aloud.                                                    */
+const cleanScript = script => script
+    .replace(/[ \t]+/g, ' ')          /* collapse stray spaces */
+    .replace(/\|/g, '।')               /* keyboard "|" used as দাঁড়ি */
+    .replace(/\n{3,}/g, '\n\n')        /* keep paragraph breaks, no huge gaps */
+    .trim();
+
+const buildPrompt = (script, segment, tone, accent) => `Read the TRANSCRIPT aloud exactly as written. Do not read these notes, the headings, or anything outside the transcript.
+
+AUDIO PROFILE: ${accent.profile}
+
+ACCENT: ${accent.accent} Keep this accent the same from the first word to the last. Read every word exactly as written; change only pronunciation and intonation, never the words.
+
+PAUSES: Take a short breath at commas. Pause clearly at every দাঁড়ি (।), full stop and question mark. Pause longer between paragraphs, where a new story or point begins. Never rush through punctuation or run sentences together.
+
+DELIVERY: Sound like a real person talking to the viewer, not a machine reading text: confident, warm authority. Stress the key word in each sentence, let pitch move naturally, and let each sentence settle down at its end. Avoid a sing-song or robotic rhythm and keep a steady broadcast pace.
+
+SEGMENT: ${segment}. Tone: ${tone}.
+
+TRANSCRIPT:
+${cleanScript(script)}`;
 
 /* ─── DATA ───────────────────────────────────────────────────── */
 const CATEGORIES = [
-    { id:'Breaking News',             label:'Breaking News', icon:'fa-bolt',               color:'bg-red-700',    promptMod:'urgent & serious'        },
-    { id:'Sports',                    label:'Sports',        icon:'fa-trophy',              color:'bg-green-600',  promptMod:'energetic & passionate'   },
-    { id:'Politics',                  label:'Politics',      icon:'fa-landmark',            color:'bg-yellow-600', promptMod:'authoritative & formal'    },
-    { id:'Entertainment & Lifestyle', label:'Lifestyle',     icon:'fa-masks-theater',       color:'bg-emerald-700',promptMod:'friendly & conversational'  },
-    { id:'Business & Economy',        label:'Business',      icon:'fa-chart-line',          color:'bg-sky-600',    promptMod:'clear & measured'          },
-    { id:'Crime & Law',               label:'Crime & Law',   icon:'fa-handcuffs',           color:'bg-amber-800',  promptMod:'grave & deliberate'        },
-    { id:'Community & Local News',    label:'Local News',    icon:'fa-people-group',        color:'bg-pink-600',   promptMod:'warm & localized'          },
-    { id:'Weather',                   label:'Weather',       icon:'fa-cloud-sun',           color:'bg-purple-700', promptMod:'calm & clear'              },
-    { id:'Education & Youth',         label:'Education',     icon:'fa-graduation-cap',      color:'bg-indigo-700', promptMod:'optimistic & inspiring'    },
-    { id:'Awareness',                 label:'Awareness',     icon:'fa-hand-holding-heart',  color:'bg-blue-800',   promptMod:'inspirational & motivating'},
-    { id:'Social & Cultural',         label:'Culture',       icon:'fa-brush',               color:'bg-gray-800',   promptMod:'reflective & respectful'   },
+    { id:'Breaking News',             label:'Breaking News', icon:'fa-bolt',               color:'bg-red-700',    promptMod:'urgent and serious, slightly quicker but still clear and controlled'        },
+    { id:'Sports',                    label:'Sports',        icon:'fa-trophy',              color:'bg-green-600',  promptMod:'lively, with genuine excitement on key moments'   },
+    { id:'Politics',                  label:'Politics',      icon:'fa-landmark',            color:'bg-yellow-600', promptMod:'measured, neutral and authoritative'    },
+    { id:'Entertainment & Lifestyle', label:'Lifestyle',     icon:'fa-masks-theater',       color:'bg-emerald-700',promptMod:'light, friendly and conversational'  },
+    { id:'Business & Economy',        label:'Business',      icon:'fa-chart-line',          color:'bg-sky-600',    promptMod:'clear and measured, careful with numbers'          },
+    { id:'Crime & Law',               label:'Crime & Law',   icon:'fa-handcuffs',           color:'bg-amber-800',  promptMod:'grave and deliberate, slightly slower'        },
+    { id:'Community & Local News',    label:'Local News',    icon:'fa-people-group',        color:'bg-pink-600',   promptMod:'warm and friendly, like talking to neighbours'          },
+    { id:'Weather',                   label:'Weather',       icon:'fa-cloud-sun',           color:'bg-purple-700', promptMod:'calm, clear and helpful'              },
+    { id:'Education & Youth',         label:'Education',     icon:'fa-graduation-cap',      color:'bg-indigo-700', promptMod:'positive and encouraging'    },
+    { id:'Awareness',                 label:'Awareness',     icon:'fa-hand-holding-heart',  color:'bg-blue-800',   promptMod:'sincere and clear'},
+    { id:'Social & Cultural',         label:'Culture',       icon:'fa-brush',               color:'bg-gray-800',   promptMod:'reflective and respectful'   },
 ];
+
+const ACCENTS = {
+    kolkata: {
+        profile: 'An experienced Bengali television news anchor from Kolkata, reading the news live on air.',
+        accent:  'Natural, standard Kolkata Bengali (চলিত ভাষা) as heard on Bengali TV news: correct Bengali vowel sounds, soft consonants and the gentle rise and fall of Kolkata speech. No English or Hindi accent on Bengali words; say English names and numbers the way a Kolkata anchor naturally would.',
+    },
+    silchar: {
+        profile: 'An experienced Bengali news anchor from Silchar in the Barak Valley of Assam, reading the news live on air for a local Barak Valley audience.',
+        accent:  'The Bengali of Silchar and the Barak Valley, shaped by Sylheti: Sylheti vowel sounds and consonant colouring, a flatter, slightly nasal melody, and the steadier, heavier rhythm of Barak Valley speech. This is NOT Kolkata Bengali and NOT Bangladeshi Sylheti; avoid the musical rise and fall of Kolkata speech. Say English names and numbers the way a Silchar anchor naturally would.',
+    },
+};
 
 const VOICES = [
-    { id:'general',  title:'Standard Broadcast' },
-    { name:'Puck',         label:'Anirban (M)',                desc:'Balanced & Neutral',                 type:'general'  },
-    { name:'Kore',         label:'Sumita (F)',                 desc:'Calm & Professional',                type:'general'  },
-    { name:'Callirrhoe',   label:'Sanjana (F)',                desc:'Versatile, Easy-going',              type:'general'  },
-    { id:'serious',  title:'Crime & Impact' },
-    { name:'Fenrir',       label:'Confrontational Anchor (M)', desc:'Rough, Intense, Opinionated',        type:'serious'  },
-    { name:'Charon',       label:'Arijit (M)',                 desc:'Deep, Grave — Crime Desk',           type:'serious'  },
-    { name:'Orus',         label:'Prosenjit (M)',              desc:'Firm & Commanding — Politics',       type:'serious'  },
-    { name:'Algenib',      label:'Ranit (M)',                  desc:'Gravelly — Urgent Situations',       type:'serious'  },
-    { id:'solemn',   title:'Memorial & Solemn' },
-    { name:'Vindemiatrix', label:'Arpita (F)',                 desc:'Gentle, Subdued — Memorials',        type:'solemn'   },
-    { id:'energetic',title:'Energy & Lifestyle' },
-    { name:'Aoede',        label:'Sunaina (F)',                desc:'Bright & Engaging — Entertainment',  type:'energetic'},
-    { name:'Zephyr',       label:'Ritika (F)',                 desc:'High Energy — Youth / Sports',       type:'energetic'},
-    { name:'Leda',         label:'Poulomi (F)',                desc:'Youthful, Lively — Dynamic',         type:'energetic'},
-    { id:'regional', title:'Regional & Accent' },
-    { name:'Sulafat',      label:'Mona (F)',   desc:'Sylheti Bengali dialect — Female',  type:'regional', accent:'Sylheti Bengali dialect, speak with Sylheti intonation and pronunciation' },
-    { name:'Achernar',     label:'Jui (F)',    desc:'Sylheti Bengali dialect — Female',  type:'regional', accent:'Sylheti Bengali dialect, speak with Sylheti intonation and pronunciation' },
-    { name:'Schedar',      label:'Sayan (M)',  desc:'Sylheti Bengali dialect — Male',    type:'regional', accent:'Sylheti Bengali dialect, speak with Sylheti intonation and pronunciation' },
-    { name:'Sadaltager',   label:'Sid (M)',    desc:'Indian English accent — Male',      type:'regional', accent:'Indian English accent, speak with Indian English pronunciation and intonation' },
-    { name:'Laomedeia',    label:'Riya (F)',   desc:'Silchar, Assam Sylheti — Female',   type:'regional', accent:'Barak Valley Sylheti dialect of Silchar, Assam — this is NOT Kolkata Bengali, NOT West Bengal Bengali, NOT standard Bengali, NOT Bangladeshi Sylheti. Speak with the flat, nasal intonation of Silchar city. Use Sylheti vowel sounds and the slower, heavier rhythm of Barak Valley speech. Avoid the musical rise-fall of Kolkata Bengali entirely' },
+    { id:'kolkata', title:'Kolkata Accent' },
+    { name:'Charon',     label:'Kolkata Male',   desc:'Clear, informative news voice', accent:'kolkata' },
+    { name:'Kore',       label:'Kolkata Female', desc:'Firm, confident news voice',    accent:'kolkata' },
+    { id:'silchar', title:'Silchari Accent' },
+    { name:'Schedar',    label:'Silchari Male',   desc:'Even, grounded news voice',    accent:'silchar' },
+    { name:'Laomedeia',  label:'Silchari Female', desc:'Warm, steady news voice',      accent:'silchar' },
 ];
-
-const PITCH_OPTIONS = [
-    { id:'low',    label:'Low',    icon:'fa-volume-down' },
-    { id:'normal', label:'Normal', icon:'fa-volume-mute' },
-    { id:'high',   label:'High',   icon:'fa-volume-up'   },
-];
-
-const LANG_OPTIONS = [
-    { id:'auto',    label:'Auto',    icon:'fa-language' },
-    { id:'bengali', label:'Bengali', icon:'fa-bahai'    },
-    { id:'english', label:'English', icon:'fa-a'        },
-];
-
-const speedLabel = lvl => ['','Normal','Brisk','Fast','Urgent'][lvl];
-const speedShort = lvl => ['','normal','brisk','fast','urgent'][lvl];
-const pitchHint  = p   => ({ low:'low', normal:'normal', high:'high' })[p];
-const langHint   = l   => ({ auto:'auto', bengali:'Bengali', english:'English' })[l];
+const DEFAULT_VOICE = 'Charon';
+const voiceInfo = name => VOICES.find(v => v.name === name) || VOICES.find(v => v.name === DEFAULT_VOICE);
 
 /* ─── API ────────────────────────────────────────────────────── */
+/* Newer model follows accent/pause direction better; fall back to the
+   older one if the newer ID is unavailable for this key. */
 const TTS_MODELS = [
+    'gemini-3.1-flash-tts-preview',
     'gemini-2.5-flash-preview-tts',
-    'gemini-2.0-flash-preview-tts',
-    'gemini-2.0-flash-exp',
 ];
 
 const callTTSModel = async (apiKey, voiceName, text, model) => {
@@ -206,10 +201,13 @@ const callTTSModel = async (apiKey, voiceName, text, model) => {
     return URL.createObjectURL(new Blob([pcmToWav(b64ToBytes(inline.data))],{type:'audio/wav'}));
 };
 
+/* Remember which model worked so later calls skip unavailable ones */
+let firstModel = 0;
+
 const callTTS = async (apiKey, voiceName, text) => {
     let lastErr;
-    for (const model of TTS_MODELS) {
-        try { return await callTTSModel(apiKey, voiceName, text, model); }
+    for (let i = firstModel; i < TTS_MODELS.length; i++) {
+        try { const url = await callTTSModel(apiKey, voiceName, text, TTS_MODELS[i]); firstModel = i; return url; }
         catch (err) {
             if (err.message.startsWith('MODEL_NOT_FOUND:')) { lastErr=err; continue; }
             throw err;
@@ -335,7 +333,7 @@ const CategorySelector = React.memo(({ category, onChange, isDark, bgControlHove
 
 /* ─── VOICE SELECTOR ─────────────────────────────────────────── */
 const VoiceSelector = React.memo(({ voice, onChange, onPreview, previewingVoice, isDark, textPrimary, textMuted }) => (
-    <div className="space-y-1.5 max-h-64 lg:max-h-80 overflow-y-auto pr-1">
+    <div className="space-y-1.5">
         {VOICES.map((v, i) => {
             if (v.title) return (
                 <div key={i} className={`text-[9px] font-bold ${isDark?'text-slate-500':'text-slate-400'} uppercase pt-3 pb-0.5 tracking-widest`}>{v.title}</div>
@@ -364,66 +362,6 @@ const VoiceSelector = React.memo(({ voice, onChange, onPreview, previewingVoice,
         })}
     </div>
 ));
-
-/* ─── FINE TUNING (collapsible on mobile) ────────────────────── */
-const FineTuning = ({ speedLevel, setSpeedLevel, pitch, setPitch, lang, setLang, isDark, textPrimary, textMuted, bgControlHover, borderSubtle }) => {
-    const [open, setOpen] = React.useState(false);
-
-    const btn = (active, onClick, children) => (
-        <button onClick={onClick}
-            className={`touch-target py-2 rounded-xl text-sm font-extrabold transition-all border flex items-center justify-center
-                ${active
-                    ?'bg-red-700 border-red-500 text-white neon-button'
-                    :`${isDark?'bg-[#293547] border-[#2e3a4e] text-slate-300':'bg-slate-100 border-slate-300 text-slate-700'} ${bgControlHover}`
-                }`}>
-            {children}
-        </button>
-    );
-
-    return (
-        <div>
-            {/* Mobile accordion toggle */}
-            <button className="lg:hidden w-full flex items-center justify-between mb-2 py-1"
-                onClick={()=>setOpen(o=>!o)}>
-                <span className={`text-xs font-bold text-red-500 uppercase tracking-widest`}>FINE TUNING</span>
-                <i className={`fa-solid fa-chevron-${open?'up':'down'} text-xs ${textMuted}`}/>
-            </button>
-
-            <div className={`${open?'block':'hidden'} lg:block space-y-4`}>
-                {/* Pace */}
-                <div>
-                    <h4 className={`text-xs font-semibold ${textMuted} mb-1.5 uppercase tracking-wider`}>Pace</h4>
-                    <div className="grid grid-cols-4 gap-1.5">
-                        {[1,2,3,4].map(lvl => btn(speedLevel===lvl, ()=>setSpeedLevel(lvl), `${lvl}x`))}
-                    </div>
-                    <p className={`text-[10px] ${textMuted} mt-1 text-center`}>
-                        <span className="text-red-400 font-semibold">{speedLabel(speedLevel)}</span>
-                    </p>
-                </div>
-
-                {/* Pitch */}
-                <div className={`border-t ${borderSubtle} pt-3`}>
-                    <h4 className={`text-xs font-semibold ${textMuted} mb-1.5 uppercase tracking-wider`}>Pitch</h4>
-                    <div className="grid grid-cols-3 gap-1.5">
-                        {PITCH_OPTIONS.map(p => btn(pitch===p.id, ()=>setPitch(p.id),
-                            <><i className={`fa-solid ${p.icon} text-sm mr-1`}/><span className="text-xs">{p.label}</span></>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Language */}
-                <div className={`border-t ${borderSubtle} pt-3`}>
-                    <h4 className={`text-xs font-semibold ${textMuted} mb-1.5 uppercase tracking-wider`}>Language</h4>
-                    <div className="grid grid-cols-3 gap-1.5">
-                        {LANG_OPTIONS.map(l => btn(lang===l.id, ()=>setLang(l.id),
-                            <><i className={`fa-solid ${l.icon} text-sm mr-1`}/><span className="text-xs">{l.label}</span></>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
 
 /* ─── SETTINGS MODAL ─────────────────────────────────────────── */
 const SettingsModal = React.memo(({ apiKey, setApiKey, theme, setTheme, onClose, onLogout, isDark, bgCard, textHeader, textMuted, bgInput, borderSubtle }) => (
@@ -499,10 +437,8 @@ const Studio = ({ onLogout }) => {
     const [apiKey,    setApiKey]    = React.useState(()=>localStorage.getItem('geminiApiKey')||'');
     const [script,    setScript]    = React.useState('');
     const [category,  setCategory]  = React.useState(()=>localStorage.getItem('defaultCategory')||'Breaking News');
-    const [voice,     setVoice]     = React.useState(()=>localStorage.getItem('defaultVoice')||'Puck');
-    const [speedLevel,setSpeedLevel]= React.useState(2);
-    const [pitch,     setPitch]     = React.useState('normal');
-    const [lang,      setLang]      = React.useState('auto');
+    /* Saved voice may be one of the old voices that were removed */
+    const [voice,     setVoice]     = React.useState(()=>voiceInfo(localStorage.getItem('defaultVoice')).name);
     const [theme,     setTheme]     = React.useState(()=>localStorage.getItem('appTheme')||'dark');
     const [loading,   setLoading]   = React.useState(false);
     const [retryInfo, setRetryInfo] = React.useState('');
@@ -537,8 +473,8 @@ const Studio = ({ onLogout }) => {
         if (!apiKey){setShowSettings(true);setError('Add your API key in Settings first.');return;}
         setPreviewingVoice(name);
         try {
-            const vd            = VOICES.find(v=>v.name===name);
-            const previewPrompt = vd?.accent ? `[accent: ${vd.accent}]\n${PREVIEW_SCRIPT}` : PREVIEW_SCRIPT;
+            /* Same direction as real output, so the preview sounds like the result */
+            const previewPrompt = buildPrompt(PREVIEW_SCRIPT, 'Introduction', 'warm and welcoming', ACCENTS[voiceInfo(name).accent]);
             const url = await callTTS(apiKey, name, previewPrompt);
             const audio = new Audio(url);
             audio.onended=()=>{URL.revokeObjectURL(url);setPreviewingVoice(null);};
@@ -552,38 +488,40 @@ const Studio = ({ onLogout }) => {
         if (!script.trim()){setError('Please enter a script.');return;}
         if (script.length>MAX_CHARS){setError(`Script too long. Max ${MAX_CHARS} chars.`);return;}
 
-        setLoading(true); setError(''); setRetryInfo(''); setAudioSrc(null);
+        setLoading(true); setError(''); setRetryInfo(''); setAudio(null);
 
-        const cat       = CATEGORIES.find(c=>c.id===category);
-        const voiceData = VOICES.find(v=>v.name===voice);
-        const accent    = voiceData?.accent || '';
-        const prompt    = buildPrompt(script, category, cat.promptMod, speedShort(speedLevel), pitchHint(pitch), langHint(lang), voice, accent);
+        const cat    = CATEGORIES.find(c=>c.id===category);
+        const prompt = buildPrompt(script, category, cat.promptMod, ACCENTS[voiceInfo(voice).accent]);
 
-        for (let attempt=0; attempt<MAX_RETRIES; attempt++) {
-            try {
-                const url      = await callTTS(apiKey, voice, prompt);
-                const filename = makeFilename(category, voice);
-                setAudio(url, filename);
-                setRetryInfo('');
-                return;
-            } catch(err) {
-                if (err.message.startsWith('QUOTA:') || attempt===MAX_RETRIES-1) {
-                    setError(err.message.replace('QUOTA:',''));
+        try {
+            for (let attempt=0; attempt<MAX_RETRIES; attempt++) {
+                try {
+                    const url      = await callTTS(apiKey, voice, prompt);
+                    const filename = makeFilename(category, voiceInfo(voice).label.replace(/\s+/g,'-'));
+                    setAudio(url, filename);
                     return;
+                } catch(err) {
+                    if (err.message.startsWith('QUOTA:') || attempt===MAX_RETRIES-1) {
+                        setError(err.message.replace('QUOTA:',''));
+                        return;
+                    }
+                    const wait = Math.pow(2,attempt)*1000;
+                    setRetryInfo(`Attempt ${attempt+1}/${MAX_RETRIES} failed — retrying in ${wait/1000}s…`);
+                    await delay(wait);
                 }
-                const wait = Math.pow(2,attempt)*1000;
-                setRetryInfo(`Attempt ${attempt+1}/${MAX_RETRIES} failed — retrying in ${wait/1000}s…`);
-                await delay(wait);
             }
+        } finally {
+            /* Always release the button, whatever happened */
+            setLoading(false);
+            setRetryInfo('');
         }
-        setLoading(false);
     };
 
     React.useEffect(()=>{
         const h = e => { if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&!loading) generateVoiceover(); };
         window.addEventListener('keydown',h);
         return ()=>window.removeEventListener('keydown',h);
-    },[script,voice,category,speedLevel,pitch,lang,apiKey,loading]);
+    },[script,voice,category,apiKey,loading]);
 
     React.useEffect(()=>()=>{if(prevAudioRef.current)URL.revokeObjectURL(prevAudioRef.current);},[]);
 
@@ -705,7 +643,7 @@ const Studio = ({ onLogout }) => {
                                         </div>
                                         <div>
                                             <p className={`font-bold ${textPrimary} text-base`}>Broadcast Ready</p>
-                                            <p className={`text-xs ${textMuted}`}>{VOICES.find(v=>v.name===voice)?.label} · {speedLabel(speedLevel)}</p>
+                                            <p className={`text-xs ${textMuted}`}>{voiceInfo(voice).label} · {CATEGORIES.find(c=>c.id===category)?.label}</p>
                                         </div>
                                     </div>
                                     <div className="bar-container">
@@ -737,18 +675,6 @@ const Studio = ({ onLogout }) => {
                     <div className={`${bgCard} p-4 lg:p-5 rounded-2xl shadow-xl border ${borderSubtle}`}>
                         <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-3">SEGMENT TYPE</h3>
                         <CategorySelector category={category} onChange={handleCategoryChange} isDark={isDark} bgControlHover={bgControlHover} />
-                    </div>
-
-                    {/* Fine tuning */}
-                    <div className={`${bgCard} p-4 lg:p-5 rounded-2xl shadow-xl border ${borderSubtle}`}>
-                        {/* Desktop label shown inside component; mobile label is the toggle */}
-                        <h3 className="hidden lg:block text-xs font-bold text-red-500 uppercase tracking-widest mb-3 border-b pb-2 border-slate-700">FINE TUNING</h3>
-                        <FineTuning
-                            speedLevel={speedLevel} setSpeedLevel={setSpeedLevel}
-                            pitch={pitch} setPitch={setPitch}
-                            lang={lang} setLang={setLang}
-                            isDark={isDark} textPrimary={textPrimary} textMuted={textMuted}
-                            bgControlHover={bgControlHover} borderSubtle={borderSubtle} />
                     </div>
                 </div>
             </main>

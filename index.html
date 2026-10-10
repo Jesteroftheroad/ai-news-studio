@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI News Reader Studio</title>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -22,16 +22,16 @@
             transform: translateY(-1px);
         }
 
-        .bar-container { height: 28px; display: flex; align-items: flex-end; gap: 2px; }
-        .bar { width: 4px; background: #ef4444; animation: bounce 1s infinite ease-in-out; border-radius: 99px; }
-        .bar:nth-child(1){height:14px;animation-delay:.1s}
-        .bar:nth-child(2){height:24px;animation-delay:.2s}
-        .bar:nth-child(3){height:18px;animation-delay:.3s}
-        .bar:nth-child(4){height:28px;animation-delay:.4s}
-        .bar:nth-child(5){height:20px;animation-delay:.5s}
+        .bar-container { height: 24px; display: flex; align-items: flex-end; gap: 2px; }
+        .bar { width: 3px; background: #ef4444; animation: bounce 1s infinite ease-in-out; border-radius: 99px; }
+        .bar:nth-child(1){height:10px;animation-delay:.1s}
+        .bar:nth-child(2){height:18px;animation-delay:.2s}
+        .bar:nth-child(3){height:13px;animation-delay:.3s}
+        .bar:nth-child(4){height:22px;animation-delay:.4s}
+        .bar:nth-child(5){height:15px;animation-delay:.5s}
         @keyframes bounce { 0%,100%{transform:scaleY(1)} 50%{transform:scaleY(1.5)} }
 
-        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar { width: 6px; }
         .dark-theme  ::-webkit-scrollbar-track { background:#1e293b }
         .dark-theme  ::-webkit-scrollbar-thumb { background:#334155; border-radius:4px }
         .dark-theme  ::-webkit-scrollbar-thumb:hover { background:#475569 }
@@ -45,16 +45,14 @@
         @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
         .animate-fade-in { animation: fadeIn .25s ease forwards; }
 
-        /* PIN screen */
-        .pin-screen { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#0b0e16; }
-        .pin-dot { width:14px; height:14px; border-radius:50%; border:2px solid #ef4444; transition:background .15s; }
-        .pin-dot.filled { background:#ef4444; }
-        .pin-key { width:72px; height:72px; border-radius:16px; font-size:1.5rem; font-weight:700; color:#f8fafc;
-            background:#1f2937; border:1px solid #334155; cursor:pointer; transition:all .15s; display:flex; align-items:center; justify-content:center; }
-        .pin-key:hover { background:#293547; border-color:#ef4444; transform:scale(1.05); }
-        .pin-key:active { transform:scale(.96); }
+        .login-screen { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#0b0e16; padding:1.25rem; }
         @keyframes shake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-8px)} 40%,80%{transform:translateX(8px)} }
         .shake { animation: shake .4s ease; }
+
+        /* Mobile touch targets */
+        @media (max-width: 1023px) {
+            .touch-target { min-height: 44px; }
+        }
     </style>
 </head>
 <body>
@@ -62,9 +60,8 @@
 
 <script type="text/babel">
 /* ─── CONSTANTS ──────────────────────────────────────────────── */
-const MAX_CHARS = 1500;
+const MAX_CHARS   = 1500;
 const MAX_RETRIES = 5;
-/* FIX: actual Bengali Unicode, not romanized transliteration */
 const PREVIEW_SCRIPT = "ইশান বাংলা নিউজে আপনাকে স্বাগত জানাই";
 
 /* ─── HELPERS ────────────────────────────────────────────────── */
@@ -74,13 +71,13 @@ const pcmToWav = (pcmData, sampleRate = 24000) => {
     const buf  = new ArrayBuffer(44 + pcmData.length);
     const view = new DataView(buf);
     const str  = (off, s) => [...s].forEach((c, i) => view.setUint8(off + i, c.charCodeAt(0)));
-    str(0, 'RIFF'); view.setUint32(4, 36 + pcmData.length, true);
-    str(8, 'WAVE'); str(12, 'fmt ');
-    view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
-    view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
-    view.setUint16(32, 2, true); view.setUint16(34, 16, true);
-    str(36, 'data'); view.setUint32(40, pcmData.length, true);
-    new Uint8Array(buf, 44).set(pcmData);
+    str(0,'RIFF'); view.setUint32(4, 36+pcmData.length, true);
+    str(8,'WAVE'); str(12,'fmt ');
+    view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
+    view.setUint32(24,sampleRate,true); view.setUint32(28,sampleRate*2,true);
+    view.setUint16(32,2,true); view.setUint16(34,16,true);
+    str(36,'data'); view.setUint32(40,pcmData.length,true);
+    new Uint8Array(buf,44).set(pcmData);
     return buf;
 };
 
@@ -90,78 +87,102 @@ const b64ToBytes = b64 => {
     return bytes;
 };
 
-/* ─── TOKEN-EFFICIENT PROMPT BUILDER ────────────────────────────
-   Reduced from ~200 tokens → ~55 tokens per call.
-   Only the dynamic parts change; boilerplate is stripped.       */
-const buildPrompt = (script, category, promptMod, speedText, pitchHint, langHint, voiceName) => {
-    const toneOverride = voiceName === 'Fenrir'
-        ? 'extremely rough, highly opinionated, tense, and aggressive like a debate anchor'
-        : promptMod;
-    return `News anchor. Segment: ${category}. Tone: ${toneOverride}. Pace: ${speedText}. Pitch: ${pitchHint}. Lang: ${langHint}.\n\n"${script}"`;
+/* ─── TIMESTAMPED FILENAME ───────────────────────────────────── */
+const makeFilename = (category, voiceName) => {
+    const now  = new Date();
+    const date = now.toISOString().slice(0, 10);
+    const time = now.toTimeString().slice(0, 5).replace(':', '-');
+    const cat  = category.toLowerCase().replace(/[\s&]+/g, '-');
+    return `${date}_${time}_${cat}_${voiceName}.wav`;
+};
+
+/* ─── ULTRA-MINIMAL PROMPT (~12 tokens overhead vs ~40 before) ──
+   Format: [Category | tone | speed | pitch? | lang?]\nscript     */
+const buildPrompt = (script, category, promptMod, spd, ptch, lng, voiceName, accent='') => {
+    const tone     = voiceName === 'Fenrir' ? 'aggressive & confrontational' : promptMod;
+    const pitchStr = ptch !== 'normal' ? ` | ${ptch} pitch` : '';
+    const langStr  = lng  !== 'auto'   ? ` | ${lng}`        : '';
+    const bracket  = `[${category} | ${tone} | ${spd}${pitchStr}${langStr}]`;
+    if (accent) {
+        return `${bracket}\nACCENT: ${accent}. Maintain this accent consistently throughout without switching.\n${script}`;
+    }
+    return `${bracket}\n${script}`;
 };
 
 /* ─── DATA ───────────────────────────────────────────────────── */
 const CATEGORIES = [
-    { id:'Breaking News',          label:'Breaking News', icon:'fa-bolt',            color:'bg-red-700',    promptMod:'extremely urgent, fast-paced, and serious' },
-    { id:'Sports',                 label:'Sports',        icon:'fa-trophy',          color:'bg-green-600',  promptMod:'energetic, exciting, and highly passionate' },
-    { id:'Politics',               label:'Politics',      icon:'fa-landmark',        color:'bg-yellow-600', promptMod:'authoritative, analytical, and formal' },
-    { id:'Entertainment & Lifestyle', label:'Lifestyle',  icon:'fa-masks-theater',   color:'bg-emerald-700',promptMod:'light-hearted, friendly, and conversational' },
-    { id:'Business & Economy',     label:'Business',      icon:'fa-chart-line',      color:'bg-sky-600',    promptMod:'authoritative, clear, and measured' },
-    { id:'Crime & Law',            label:'Crime & Law',   icon:'fa-handcuffs',       color:'bg-amber-800',  promptMod:'grave, serious, and deliberate' },
-    { id:'Community & Local News', label:'Local News',    icon:'fa-people-group',    color:'bg-pink-600',   promptMod:'warm, localized, and friendly' },
-    { id:'Weather',                label:'Weather',       icon:'fa-cloud-sun',       color:'bg-purple-700', promptMod:'calm, clear, and helpful' },
-    { id:'Education & Youth',      label:'Education',     icon:'fa-graduation-cap',  color:'bg-indigo-700', promptMod:'optimistic, encouraging, and inspiring' },
-    { id:'Awareness',              label:'Awareness',     icon:'fa-hand-holding-heart', color:'bg-blue-800',promptMod:'inspirational, clear, and motivational' },
-    { id:'Social & Cultural',      label:'Culture',       icon:'fa-brush',           color:'bg-gray-800',   promptMod:'reflective, respectful, and appreciative' },
+    { id:'Breaking News',             label:'Breaking News', icon:'fa-bolt',               color:'bg-red-700',    promptMod:'urgent & serious'        },
+    { id:'Sports',                    label:'Sports',        icon:'fa-trophy',              color:'bg-green-600',  promptMod:'energetic & passionate'   },
+    { id:'Politics',                  label:'Politics',      icon:'fa-landmark',            color:'bg-yellow-600', promptMod:'authoritative & formal'    },
+    { id:'Entertainment & Lifestyle', label:'Lifestyle',     icon:'fa-masks-theater',       color:'bg-emerald-700',promptMod:'friendly & conversational'  },
+    { id:'Business & Economy',        label:'Business',      icon:'fa-chart-line',          color:'bg-sky-600',    promptMod:'clear & measured'          },
+    { id:'Crime & Law',               label:'Crime & Law',   icon:'fa-handcuffs',           color:'bg-amber-800',  promptMod:'grave & deliberate'        },
+    { id:'Community & Local News',    label:'Local News',    icon:'fa-people-group',        color:'bg-pink-600',   promptMod:'warm & localized'          },
+    { id:'Weather',                   label:'Weather',       icon:'fa-cloud-sun',           color:'bg-purple-700', promptMod:'calm & clear'              },
+    { id:'Education & Youth',         label:'Education',     icon:'fa-graduation-cap',      color:'bg-indigo-700', promptMod:'optimistic & inspiring'    },
+    { id:'Awareness',                 label:'Awareness',     icon:'fa-hand-holding-heart',  color:'bg-blue-800',   promptMod:'inspirational & motivating'},
+    { id:'Social & Cultural',         label:'Culture',       icon:'fa-brush',               color:'bg-gray-800',   promptMod:'reflective & respectful'   },
 ];
 
 const VOICES = [
-    { id:'general', title:'Standard Broadcast' },
-    { name:'Puck',         label:'Anirban (M)',               desc:'Balanced & Neutral',                  type:'general' },
-    { name:'Kore',         label:'Sumita (F)',                desc:'Calm & Professional',                 type:'general' },
-    { name:'Callirrhoe',   label:'Sanjana (F)',               desc:'Versatile, Easy-going',               type:'general' },
-    { id:'serious', title:'Crime & Impact' },
-    { name:'Fenrir',       label:'Confrontational Anchor (M)',desc:'Rough, Intense, Highly Opinionated',  type:'serious' },
-    { name:'Charon',       label:'Arijit (M)',                desc:'Deep, Grave — Crime Desk',            type:'serious' },
-    { name:'Orus',         label:'Prosenjit (M)',             desc:'Firm & Commanding — Politics',        type:'serious' },
-    { name:'Algenib',      label:'Ranit (M)',                 desc:'Gravelly, Deep — Urgent Situations',  type:'serious' },
-    { id:'solemn', title:'Memorial & Solemn' },
-    { name:'Vindemiatrix', label:'Arpita (F)',                desc:'Gentle, Subdued — Memorials',         type:'solemn' },
-    { id:'energetic', title:'Energy & Lifestyle' },
-    { name:'Aoede',        label:'Sunaina (F)',               desc:'Bright & Engaging — Entertainment',   type:'energetic' },
-    { name:'Zephyr',       label:'Ritika (F)',                desc:'High Energy — Youth / Sports',        type:'energetic' },
-    { name:'Leda',         label:'Poulomi (F)',               desc:'Youthful, Lively — Dynamic Segments', type:'energetic' },
+    { id:'general',  title:'Standard Broadcast' },
+    { name:'Puck',         label:'Anirban (M)',                desc:'Balanced & Neutral',                 type:'general'  },
+    { name:'Kore',         label:'Sumita (F)',                 desc:'Calm & Professional',                type:'general'  },
+    { name:'Callirrhoe',   label:'Sanjana (F)',                desc:'Versatile, Easy-going',              type:'general'  },
+    { id:'serious',  title:'Crime & Impact' },
+    { name:'Fenrir',       label:'Confrontational Anchor (M)', desc:'Rough, Intense, Opinionated',        type:'serious'  },
+    { name:'Charon',       label:'Arijit (M)',                 desc:'Deep, Grave — Crime Desk',           type:'serious'  },
+    { name:'Orus',         label:'Prosenjit (M)',              desc:'Firm & Commanding — Politics',       type:'serious'  },
+    { name:'Algenib',      label:'Ranit (M)',                  desc:'Gravelly — Urgent Situations',       type:'serious'  },
+    { id:'solemn',   title:'Memorial & Solemn' },
+    { name:'Vindemiatrix', label:'Arpita (F)',                 desc:'Gentle, Subdued — Memorials',        type:'solemn'   },
+    { id:'energetic',title:'Energy & Lifestyle' },
+    { name:'Aoede',        label:'Sunaina (F)',                desc:'Bright & Engaging — Entertainment',  type:'energetic'},
+    { name:'Zephyr',       label:'Ritika (F)',                 desc:'High Energy — Youth / Sports',       type:'energetic'},
+    { name:'Leda',         label:'Poulomi (F)',                desc:'Youthful, Lively — Dynamic',         type:'energetic'},
+    { id:'regional', title:'Regional & Accent' },
+    { name:'Sulafat',      label:'Mona (F)',   desc:'Sylheti Bengali dialect — Female',  type:'regional', accent:'Sylheti Bengali dialect, speak with Sylheti intonation and pronunciation' },
+    { name:'Achernar',     label:'Jui (F)',    desc:'Sylheti Bengali dialect — Female',  type:'regional', accent:'Sylheti Bengali dialect, speak with Sylheti intonation and pronunciation' },
+    { name:'Schedar',      label:'Sayan (M)',  desc:'Sylheti Bengali dialect — Male',    type:'regional', accent:'Sylheti Bengali dialect, speak with Sylheti intonation and pronunciation' },
+    { name:'Sadaltager',   label:'Sid (M)',    desc:'Indian English accent — Male',      type:'regional', accent:'Indian English accent, speak with Indian English pronunciation and intonation' },
+    { name:'Laomedeia',    label:'Riya (F)',   desc:'Silchar, Assam Sylheti — Female',   type:'regional', accent:'Barak Valley Sylheti dialect of Silchar, Assam — this is NOT Kolkata Bengali, NOT West Bengal Bengali, NOT standard Bengali, NOT Bangladeshi Sylheti. Speak with the flat, nasal intonation of Silchar city. Use Sylheti vowel sounds and the slower, heavier rhythm of Barak Valley speech. Avoid the musical rise-fall of Kolkata Bengali entirely' },
 ];
 
 const PITCH_OPTIONS = [
-    { id:'low',    label:'Low',    icon:'fa-volume-down',  desc:'Deep & Resonant' },
-    { id:'normal', label:'Normal', icon:'fa-volume-mute',  desc:'Default Pitch' },
-    { id:'high',   label:'High',   icon:'fa-volume-up',    desc:'Elevated & Energetic' },
+    { id:'low',    label:'Low',    icon:'fa-volume-down' },
+    { id:'normal', label:'Normal', icon:'fa-volume-mute' },
+    { id:'high',   label:'High',   icon:'fa-volume-up'   },
 ];
 
 const LANG_OPTIONS = [
-    { id:'auto',    label:'Auto',    icon:'fa-language',  hint:'Detect language automatically' },
-    { id:'bengali', label:'Bengali', icon:'fa-bahai',     hint:'Prioritize Bengali pronunciation' },
-    { id:'english', label:'English', icon:'fa-a',         hint:'Prioritize American English' },
+    { id:'auto',    label:'Auto',    icon:'fa-language' },
+    { id:'bengali', label:'Bengali', icon:'fa-bahai'    },
+    { id:'english', label:'English', icon:'fa-a'        },
 ];
 
 const speedLabel = lvl => ['','Normal','Brisk','Fast','Urgent'][lvl];
-const speedText  = lvl => ['','normal pace','brisk pace','fast pace','extremely fast pace'][lvl];
-const pitchHint  = p  => ({ low:'low pitch', normal:'natural pitch', high:'high pitch' })[p];
-const langHint   = l  => ({ auto:'auto-detect', bengali:'Bengali', english:'English' })[l];
+const speedShort = lvl => ['','normal','brisk','fast','urgent'][lvl];
+const pitchHint  = p   => ({ low:'low', normal:'normal', high:'high' })[p];
+const langHint   = l   => ({ auto:'auto', bengali:'Bengali', english:'English' })[l];
 
-/* ─── API CALL ───────────────────────────────────────────────── */
-const callTTS = async (apiKey, voiceName, text) => {
+/* ─── API ────────────────────────────────────────────────────── */
+const TTS_MODELS = [
+    'gemini-2.5-flash-preview-tts',
+    'gemini-2.0-flash-preview-tts',
+    'gemini-2.0-flash-exp',
+];
+
+const callTTSModel = async (apiKey, voiceName, text, model) => {
     const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
         {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
             body: JSON.stringify({
-                contents: [{ parts: [{ text }] }],
-                generationConfig: {
-                    responseModalities: ['AUDIO'],
-                    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } }
+                contents:[{parts:[{text}]}],
+                generationConfig:{
+                    responseModalities:['AUDIO'],
+                    speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName}}}
                 }
             })
         }
@@ -169,147 +190,174 @@ const callTTS = async (apiKey, voiceName, text) => {
     const data = await res.json();
     if (!res.ok) {
         const msg = data.error?.message || `HTTP ${res.status}`;
-        if (res.status === 429 || msg.includes('quota')) throw new Error('QUOTA:' + msg);
+        if (res.status===429 || msg.includes('quota')) throw new Error('QUOTA:'+msg);
+        if (res.status===404 || msg.toLowerCase().includes('not found')) throw new Error('MODEL_NOT_FOUND:'+msg);
         throw new Error(msg);
     }
-    const inline = data.candidates?.[0]?.content?.parts?.[0]?.inlineData;
-    if (!inline) throw new Error('No audio data returned — model may have refused the request.');
-    const wavBuf = pcmToWav(b64ToBytes(inline.data));
-    const url    = URL.createObjectURL(new Blob([wavBuf], { type: 'audio/wav' }));
-    return url;
+    const candidate    = data.candidates?.[0];
+    const finishReason = candidate?.finishReason;
+    const inline       = candidate?.content?.parts?.[0]?.inlineData;
+    if (!inline) {
+        if (finishReason==='SAFETY')     throw new Error('Blocked by safety filter. Try rephrasing.');
+        if (finishReason==='RECITATION') throw new Error('Blocked: matched copyrighted content.');
+        const txt = candidate?.content?.parts?.[0]?.text || '';
+        throw new Error(`No audio (reason: ${finishReason||'unknown'})${txt?' — '+txt.slice(0,100):''}`);
+    }
+    return URL.createObjectURL(new Blob([pcmToWav(b64ToBytes(inline.data))],{type:'audio/wav'}));
 };
 
-/* ─── ISHAN BANGLA LOGO (inline SVG recreation) ─────────────── */
-const IshanBanglaLogo = ({ size = 'md' }) => {
-    const heights = { sm: 117, md: 247, lg: 359 };
-    const h = heights[size] || 110;
-    return <img src="assets/logo.png" alt="Ishan Bangla News" style={{ height: h, width: 'auto', objectFit: 'contain' }} />;
+const callTTS = async (apiKey, voiceName, text) => {
+    let lastErr;
+    for (const model of TTS_MODELS) {
+        try { return await callTTSModel(apiKey, voiceName, text, model); }
+        catch (err) {
+            if (err.message.startsWith('MODEL_NOT_FOUND:')) { lastErr=err; continue; }
+            throw err;
+        }
+    }
+    throw new Error('No working TTS model. '+(lastErr?.message||''));
 };
 
-/* ─── PIN UTILITIES ──────────────────────────────────────────── */
-const PIN_KEY  = 'ibStudioPin';
-const SESSION  = 'ibStudioUnlocked';
-const hashPin  = async raw => {
-    const buf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw + 'ishan-salt'));
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+/* ─── LOGO ───────────────────────────────────────────────────── */
+const IshanBanglaLogo = ({ size='md' }) => {
+    const h = { xs:42, sm:117, md:247, lg:359 }[size] || 117;
+    return <img src="assets/logo.png" alt="Ishan Bangla News" style={{height:h,width:'auto',objectFit:'contain'}} />;
 };
 
-/* ─── PIN LOCK SCREEN ────────────────────────────────────────── */
-const PinScreen = ({ mode, onSuccess }) => {
-    const [entry,    setEntry]    = React.useState('');
-    const [confirm,  setConfirm]  = React.useState('');
-    const [step,     setStep]     = React.useState(mode === 'set' ? 'create' : 'enter'); // create | verify | enter
+/* ─── AUTH ───────────────────────────────────────────────────── */
+const SESSION_KEY = 'ibStudioSession';
+const checkCreds  = (u, p) => u==='Ishanbangla' && p==='Ishanbangla@2022';
+
+/* ─── LOGIN SCREEN ───────────────────────────────────────────── */
+const LoginScreen = ({ onSuccess }) => {
+    const [username, setUsername] = React.useState('');
+    const [password, setPassword] = React.useState('');
+    const [showPass, setShowPass] = React.useState(false);
+    const [error,    setError]    = React.useState('');
     const [shake,    setShake]    = React.useState(false);
-    const [hint,     setHint]     = React.useState(mode === 'set' ? 'Set a 4-digit PIN to protect your Studio' : 'Enter your PIN');
+    const [loading,  setLoading]  = React.useState(false);
 
     const triggerShake = msg => {
-        setShake(true); setTimeout(() => setShake(false), 400);
-        setHint(msg); setEntry('');
+        setShake(true); setTimeout(()=>setShake(false),400); setError(msg);
     };
 
-    const press = async digit => {
-        const next = (entry + digit).slice(0, 4);
-        setEntry(next);
-        if (next.length < 4) return;
-
-        if (step === 'create') {
-            setConfirm(next); setEntry(''); setStep('verify'); setHint('Confirm your PIN');
-        } else if (step === 'verify') {
-            if (next === confirm) {
-                const h = await hashPin(next);
-                localStorage.setItem(PIN_KEY, h);
-                sessionStorage.setItem(SESSION, '1');
-                onSuccess();
-            } else {
-                setConfirm(''); triggerShake("PINs didn't match — try again");
-                setStep('create'); setHint('Set a 4-digit PIN');
-            }
-        } else {
-            const stored = localStorage.getItem(PIN_KEY);
-            const h = await hashPin(next);
-            if (h === stored) { sessionStorage.setItem(SESSION, '1'); onSuccess(); }
-            else triggerShake('Incorrect PIN');
-        }
+    const handleLogin = e => {
+        e.preventDefault(); setLoading(true);
+        setTimeout(() => {
+            if (checkCreds(username.trim(), password)) {
+                sessionStorage.setItem(SESSION_KEY,'1'); onSuccess();
+            } else { triggerShake('Invalid username or password.'); setPassword(''); }
+            setLoading(false);
+        }, 400);
     };
 
-    const del = () => setEntry(e => e.slice(0, -1));
+    const iStyle = (base={}) => ({ width:'100%', background:'#0d111c', border:'1px solid #334155', borderRadius:'0.6rem', color:'#f1f5f9', fontSize:'0.95rem', outline:'none', boxSizing:'border-box', ...base });
 
     return (
-        <div className="pin-screen">
-            <div className="mb-10"><IshanBanglaLogo size="md" /></div>
-            <p style={{ color:'#94a3b8', fontSize:'0.85rem', marginBottom:'2rem', letterSpacing:'0.05em' }}>{hint}</p>
-
-            {/* Dots */}
-            <div className={`flex gap-4 mb-10 ${shake ? 'shake' : ''}`}>
-                {[0,1,2,3].map(i => (
-                    <div key={i} className={`pin-dot ${i < entry.length ? 'filled' : ''}`}/>
-                ))}
+        <div className="login-screen">
+            <div style={{marginBottom:'1.75rem'}}><IshanBanglaLogo size="md" /></div>
+            <div style={{width:'100%',maxWidth:'400px',background:'#1f2937',borderRadius:'1.25rem',border:'1px solid #334155',overflow:'hidden',boxShadow:'0 25px 60px rgba(0,0,0,.5)'}}>
+                <div style={{background:'#0b0e16',padding:'1.1rem 1.5rem',borderBottom:'1px solid #334155',display:'flex',alignItems:'center',gap:'0.75rem'}}>
+                    <div style={{width:34,height:34,background:'#ef4444',borderRadius:'0.55rem',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                        <i className="fa-solid fa-lock" style={{color:'white',fontSize:'0.8rem'}}/>
+                    </div>
+                    <div>
+                        <p style={{color:'#f8fafc',fontWeight:700,fontSize:'0.95rem',lineHeight:1.2}}>Studio Access</p>
+                        <p style={{color:'#64748b',fontSize:'0.68rem',letterSpacing:'0.08em',textTransform:'uppercase'}}>Authorised Personnel Only</p>
+                    </div>
+                </div>
+                <form onSubmit={handleLogin} style={{padding:'1.5rem',display:'flex',flexDirection:'column',gap:'1rem'}}>
+                    <div>
+                        <label style={{display:'block',fontSize:'0.68rem',fontWeight:700,color:'#ef4444',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:'0.35rem'}}>Username</label>
+                        <div style={{position:'relative'}}>
+                            <i className="fa-solid fa-user" style={{position:'absolute',left:'0.8rem',top:'50%',transform:'translateY(-50%)',color:'#475569',fontSize:'0.8rem'}}/>
+                            <input type="text" autoComplete="username" spellCheck="false"
+                                value={username} onChange={e=>{setUsername(e.target.value);setError('');}}
+                                placeholder="Enter username"
+                                style={iStyle({padding:'0.75rem 0.9rem 0.75rem 2.3rem'})}
+                                onFocus={e=>e.target.style.borderColor='#ef4444'}
+                                onBlur={e=>e.target.style.borderColor='#334155'} />
+                        </div>
+                    </div>
+                    <div>
+                        <label style={{display:'block',fontSize:'0.68rem',fontWeight:700,color:'#ef4444',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:'0.35rem'}}>Password</label>
+                        <div style={{position:'relative'}}>
+                            <i className="fa-solid fa-key" style={{position:'absolute',left:'0.8rem',top:'50%',transform:'translateY(-50%)',color:'#475569',fontSize:'0.8rem'}}/>
+                            <input type={showPass?'text':'password'} autoComplete="current-password"
+                                value={password} onChange={e=>{setPassword(e.target.value);setError('');}}
+                                placeholder="Enter password"
+                                style={iStyle({padding:'0.75rem 2.5rem 0.75rem 2.3rem'})}
+                                onFocus={e=>e.target.style.borderColor='#ef4444'}
+                                onBlur={e=>e.target.style.borderColor='#334155'} />
+                            <button type="button" onClick={()=>setShowPass(s=>!s)}
+                                style={{position:'absolute',right:'0.8rem',top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:'#475569',cursor:'pointer',padding:0,fontSize:'0.9rem'}}>
+                                <i className={`fa-solid ${showPass?'fa-eye-slash':'fa-eye'}`}/>
+                            </button>
+                        </div>
+                    </div>
+                    {error && (
+                        <div className={shake?'shake':''} style={{background:'rgba(239,68,68,.1)',border:'1px solid rgba(239,68,68,.4)',borderRadius:'0.5rem',padding:'0.55rem 0.85rem',color:'#f87171',fontSize:'0.8rem',display:'flex',alignItems:'center',gap:'0.5rem'}}>
+                            <i className="fa-solid fa-triangle-exclamation"/>{error}
+                        </div>
+                    )}
+                    <button type="submit" disabled={loading||!username||!password}
+                        style={{marginTop:'0.15rem',width:'100%',padding:'0.85rem',background:(loading||!username||!password)?'#374151':'#dc2626',color:(loading||!username||!password)?'#6b7280':'white',border:'none',borderRadius:'0.75rem',fontSize:'0.95rem',fontWeight:700,cursor:(loading||!username||!password)?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:'0.5rem',transition:'background .2s'}}>
+                        {loading?<><i className="fa-solid fa-circle-notch fa-spin"/> Verifying…</>:<><i className="fa-solid fa-right-to-bracket"/> Sign In</>}
+                    </button>
+                </form>
             </div>
-
-            {/* Keypad */}
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,72px)', gap:'12px' }}>
-                {[1,2,3,4,5,6,7,8,9].map(n => (
-                    <button key={n} className="pin-key" onClick={() => press(String(n))}>{n}</button>
-                ))}
-                <div/>
-                <button className="pin-key" onClick={() => press('0')}>0</button>
-                <button className="pin-key" onClick={del} style={{ fontSize:'1.2rem' }}>
-                    <i className="fa-solid fa-delete-left"/>
-                </button>
-            </div>
-
-            {mode === 'set' && (
-                <p style={{ color:'#475569', fontSize:'0.75rem', marginTop:'2rem', maxWidth:'220px', textAlign:'center' }}>
-                    PIN is stored encrypted — it cannot be recovered. Keep it safe.
-                </p>
-            )}
+            <p style={{color:'#334155',fontSize:'0.65rem',marginTop:'1.5rem',letterSpacing:'0.05em'}}>
+                ISHAN BANGLA BROADCAST SUITE · INTERNAL USE ONLY
+            </p>
         </div>
     );
 };
 
-/* ─── SUB-COMPONENTS (React.memo to avoid re-renders) ────────── */
+/* ─── CATEGORY SELECTOR ──────────────────────────────────────── */
 const CategorySelector = React.memo(({ category, onChange, isDark, bgControlHover }) => (
-    <div className={`grid grid-cols-2 gap-3 max-h-[350px] overflow-y-auto pr-3`}>
+    <div className="grid grid-cols-2 gap-2 max-h-64 lg:max-h-80 overflow-y-auto pr-1">
         {CATEGORIES.map(cat => {
             const sel = category === cat.id;
             return (
-                <button key={cat.id} onClick={() => onChange(cat.id)}
-                    className={`p-4 rounded-xl text-sm font-semibold transition-all flex items-center gap-3 shadow-md
+                <button key={cat.id} onClick={()=>onChange(cat.id)}
+                    className={`touch-target p-2 lg:p-3 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 shadow-md
                         ${sel
                             ? `${cat.color} border-2 border-white text-white shadow-xl neon-button`
-                            : `${isDark ? 'bg-[#293547] border border-[#2e3a4e] text-slate-300' : 'bg-slate-100 border border-slate-300 text-slate-700'} ${bgControlHover}`
+                            : `${isDark?'bg-[#293547] border border-[#2e3a4e] text-slate-300':'bg-slate-100 border border-slate-300 text-slate-700'} ${bgControlHover}`
                         }`}>
-                    <i className={`fa-solid ${cat.icon} text-lg`}></i>{cat.label}
+                    <i className={`fa-solid ${cat.icon} text-base shrink-0`}></i>
+                    <span className="leading-tight">{cat.label}</span>
                 </button>
             );
         })}
     </div>
 ));
 
-const VoiceSelector = React.memo(({ voice, onChange, onPreview, previewingVoice, isDark, textPrimary, textMuted, bgControlHover }) => (
-    <div className="space-y-2 max-h-[350px] overflow-y-auto pr-2">
+/* ─── VOICE SELECTOR ─────────────────────────────────────────── */
+const VoiceSelector = React.memo(({ voice, onChange, onPreview, previewingVoice, isDark, textPrimary, textMuted }) => (
+    <div className="space-y-1.5 max-h-64 lg:max-h-80 overflow-y-auto pr-1">
         {VOICES.map((v, i) => {
             if (v.title) return (
-                <div key={i} className={`text-[10px] font-bold ${isDark ? 'text-slate-500' : 'text-slate-400'} uppercase pt-4 pb-1 tracking-widest`}>{v.title}</div>
+                <div key={i} className={`text-[9px] font-bold ${isDark?'text-slate-500':'text-slate-400'} uppercase pt-3 pb-0.5 tracking-widest`}>{v.title}</div>
             );
             const isLoading = previewingVoice === v.name;
             return (
-                <div key={v.name} onClick={() => onChange(v.name)}
-                    className={`w-full p-3 rounded-lg border transition-all flex items-center justify-between cursor-pointer
-                        ${voice === v.name
-                            ? 'bg-red-500/10 border-red-600 ring-1 ring-red-600 shadow-md'
-                            : isDark ? 'bg-[#242c38] border-slate-800 hover:border-slate-700 hover:bg-[#2e3644]' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                <div key={v.name} onClick={()=>onChange(v.name)}
+                    className={`w-full p-2.5 rounded-lg border transition-all flex items-center justify-between cursor-pointer touch-target
+                        ${voice===v.name
+                            ?'bg-red-500/10 border-red-600 ring-1 ring-red-600'
+                            :isDark?'bg-[#242c38] border-slate-800 hover:border-slate-700 hover:bg-[#2e3644]':'bg-slate-50 border-slate-200 hover:bg-slate-100'
                         }`}>
-                    <div className="flex-1">
-                        <div className={`text-sm font-semibold ${voice === v.name ? 'text-red-400' : textPrimary}`}>{v.label}</div>
-                        <div className={`text-xs ${textMuted} mt-0.5`}>{v.desc}</div>
+                    <div className="flex-1 min-w-0">
+                        <div className={`text-xs font-semibold truncate ${voice===v.name?'text-red-400':textPrimary}`}>{v.label}</div>
+                        <div className={`text-[10px] ${textMuted} mt-0.5 truncate`}>{v.desc}</div>
                     </div>
-                    <button onClick={e => { e.stopPropagation(); onPreview(v.name); }} disabled={isLoading}
-                        className={`ml-3 px-3 py-1 text-xs font-medium rounded-full flex items-center gap-1 transition-colors
-                            ${isLoading ? 'bg-red-800 text-white cursor-not-allowed' : 'bg-red-600 text-white hover:bg-red-500 neon-button'}`}>
+                    <button onClick={e=>{e.stopPropagation();onPreview(v.name);}} disabled={isLoading}
+                        className={`ml-2 px-2.5 py-1 text-[10px] font-medium rounded-full flex items-center gap-1 shrink-0 transition-colors
+                            ${isLoading?'bg-red-800 text-white cursor-not-allowed':'bg-red-600 text-white hover:bg-red-500 neon-button'}`}>
                         {isLoading
-                            ? <><i className="fa-solid fa-spinner fa-spin"></i> Load</>
-                            : <><i className="fa-solid fa-volume-high"></i> {voice === v.name ? 'Selected' : 'Preview'}</>}
+                            ? <><i className="fa-solid fa-spinner fa-spin"></i></>
+                            : <><i className="fa-solid fa-volume-high"></i> {voice===v.name?'✓':'Try'}</>}
                     </button>
                 </div>
             );
@@ -317,120 +365,121 @@ const VoiceSelector = React.memo(({ voice, onChange, onPreview, previewingVoice,
     </div>
 ));
 
-const FineTuning = React.memo(({ speedLevel, setSpeedLevel, pitch, setPitch, lang, setLang, isDark, textPrimary, textMuted, bgControlHover, borderSubtle }) => (
-    <div>
-        {/* Pace */}
-        <h4 className={`text-sm font-semibold ${textPrimary} mb-2`}>Speaking Pace</h4>
-        <div className="grid grid-cols-4 gap-2 mb-1">
-            {[1,2,3,4].map(lvl => (
-                <button key={lvl} onClick={() => setSpeedLevel(lvl)}
-                    className={`py-2 rounded-xl text-lg font-extrabold transition-all border
-                        ${speedLevel === lvl
-                            ? 'bg-red-700 border-red-500 text-white neon-button'
-                            : `${isDark ? 'bg-[#293547] border-[#2e3a4e] text-slate-300' : 'bg-slate-100 border-slate-300 text-slate-700'} ${bgControlHover}`
-                        }`}>{lvl}x</button>
-            ))}
-        </div>
-        <p className={`text-xs ${textMuted} mb-5 text-center`}>
-            <span className="text-red-400 font-semibold">{speedLabel(speedLevel)}</span>
-        </p>
+/* ─── FINE TUNING (collapsible on mobile) ────────────────────── */
+const FineTuning = ({ speedLevel, setSpeedLevel, pitch, setPitch, lang, setLang, isDark, textPrimary, textMuted, bgControlHover, borderSubtle }) => {
+    const [open, setOpen] = React.useState(false);
 
-        {/* Pitch */}
-        <div className={`border-t ${borderSubtle} pt-4 mb-5`}>
-            <h4 className={`text-sm font-semibold ${textPrimary} mb-2`}>Voice Pitch</h4>
-            <div className="grid grid-cols-3 gap-3">
-                {PITCH_OPTIONS.map(p => (
-                    <button key={p.id} onClick={() => setPitch(p.id)}
-                        className={`p-3 rounded-xl text-sm font-semibold transition-all flex flex-col items-center shadow-md
-                            ${pitch === p.id
-                                ? 'bg-red-700 border-red-500 text-white neon-button'
-                                : `${isDark ? 'bg-[#293547] border border-[#2e3a4e] text-slate-300' : 'bg-slate-100 border border-slate-300 text-slate-700'} ${bgControlHover}`
-                            }`}>
-                        <i className={`fa-solid ${p.icon} text-lg mb-1`}></i>
-                        <span className="text-xs">{p.label}</span>
-                    </button>
-                ))}
-            </div>
-        </div>
+    const btn = (active, onClick, children) => (
+        <button onClick={onClick}
+            className={`touch-target py-2 rounded-xl text-sm font-extrabold transition-all border flex items-center justify-center
+                ${active
+                    ?'bg-red-700 border-red-500 text-white neon-button'
+                    :`${isDark?'bg-[#293547] border-[#2e3a4e] text-slate-300':'bg-slate-100 border-slate-300 text-slate-700'} ${bgControlHover}`
+                }`}>
+            {children}
+        </button>
+    );
 
-        {/* Language */}
-        <div className={`border-t ${borderSubtle} pt-4`}>
-            <h4 className={`text-sm font-semibold ${textPrimary} mb-2`}>Pronunciation Hint</h4>
-            <div className="grid grid-cols-3 gap-3">
-                {LANG_OPTIONS.map(l => (
-                    <button key={l.id} onClick={() => setLang(l.id)}
-                        className={`p-3 rounded-xl text-sm font-semibold transition-all flex flex-col items-center text-center shadow-md
-                            ${lang === l.id
-                                ? 'bg-red-700 border-red-500 text-white neon-button'
-                                : `${isDark ? 'bg-[#293547] border border-[#2e3a4e] text-slate-300' : 'bg-slate-100 border border-slate-300 text-slate-700'} ${bgControlHover}`
-                            }`}>
-                        <i className={`fa-solid ${l.icon} text-lg mb-1`}></i>
-                        <span className="text-xs">{l.label}</span>
-                    </button>
-                ))}
-            </div>
-        </div>
-    </div>
-));
+    return (
+        <div>
+            {/* Mobile accordion toggle */}
+            <button className="lg:hidden w-full flex items-center justify-between mb-2 py-1"
+                onClick={()=>setOpen(o=>!o)}>
+                <span className={`text-xs font-bold text-red-500 uppercase tracking-widest`}>FINE TUNING</span>
+                <i className={`fa-solid fa-chevron-${open?'up':'down'} text-xs ${textMuted}`}/>
+            </button>
 
-/* ─── SETTINGS MODAL ─────────────────────────────────────────── */
-const SettingsModal = React.memo(({ apiKey, setApiKey, theme, setTheme, onClose, onChangePin, isDark, bgCard, textHeader, textMuted, bgInput, borderSubtle }) => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-        <div className={`${bgCard} rounded-2xl border ${borderSubtle} w-full max-w-md shadow-2xl overflow-hidden`}>
-            <div className={`p-6 border-b ${borderSubtle} flex justify-between items-center ${isDark ? 'bg-[#11141f]' : 'bg-slate-50'}`}>
-                <h2 className={`text-xl font-bold ${textHeader}`}>Studio Settings</h2>
-                <button onClick={onClose} className={`${textMuted} hover:text-red-400 transition-colors`}>
-                    <i className="fa-solid fa-xmark text-xl"></i>
-                </button>
-            </div>
-            <div className="p-6 space-y-6">
-                {/* Theme */}
+            <div className={`${open?'block':'hidden'} lg:block space-y-4`}>
+                {/* Pace */}
                 <div>
-                    <label className="block text-xs font-bold text-red-500 uppercase tracking-widest mb-2">Theme</label>
-                    <div className="flex items-center space-x-4">
-                        {['dark','light'].map(t => (
-                            <button key={t} onClick={() => { setTheme(t); localStorage.setItem('appTheme', t); }}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all
-                                    ${theme === t ? 'bg-red-600 text-white' : isDark ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-600 bg-slate-100 hover:bg-slate-200'}`}>
-                                <i className={`fa-solid ${t === 'dark' ? 'fa-moon' : 'fa-sun'}`}></i> {t.charAt(0).toUpperCase()+t.slice(1)}
-                            </button>
+                    <h4 className={`text-xs font-semibold ${textMuted} mb-1.5 uppercase tracking-wider`}>Pace</h4>
+                    <div className="grid grid-cols-4 gap-1.5">
+                        {[1,2,3,4].map(lvl => btn(speedLevel===lvl, ()=>setSpeedLevel(lvl), `${lvl}x`))}
+                    </div>
+                    <p className={`text-[10px] ${textMuted} mt-1 text-center`}>
+                        <span className="text-red-400 font-semibold">{speedLabel(speedLevel)}</span>
+                    </p>
+                </div>
+
+                {/* Pitch */}
+                <div className={`border-t ${borderSubtle} pt-3`}>
+                    <h4 className={`text-xs font-semibold ${textMuted} mb-1.5 uppercase tracking-wider`}>Pitch</h4>
+                    <div className="grid grid-cols-3 gap-1.5">
+                        {PITCH_OPTIONS.map(p => btn(pitch===p.id, ()=>setPitch(p.id),
+                            <><i className={`fa-solid ${p.icon} text-sm mr-1`}/><span className="text-xs">{p.label}</span></>
                         ))}
                     </div>
                 </div>
 
+                {/* Language */}
+                <div className={`border-t ${borderSubtle} pt-3`}>
+                    <h4 className={`text-xs font-semibold ${textMuted} mb-1.5 uppercase tracking-wider`}>Language</h4>
+                    <div className="grid grid-cols-3 gap-1.5">
+                        {LANG_OPTIONS.map(l => btn(lang===l.id, ()=>setLang(l.id),
+                            <><i className={`fa-solid ${l.icon} text-sm mr-1`}/><span className="text-xs">{l.label}</span></>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* ─── SETTINGS MODAL ─────────────────────────────────────────── */
+const SettingsModal = React.memo(({ apiKey, setApiKey, theme, setTheme, onClose, onLogout, isDark, bgCard, textHeader, textMuted, bgInput, borderSubtle }) => (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-fade-in">
+        <div className={`${bgCard} rounded-t-2xl sm:rounded-2xl border ${borderSubtle} w-full sm:max-w-md shadow-2xl overflow-hidden`}>
+            <div className={`p-5 border-b ${borderSubtle} flex justify-between items-center ${isDark?'bg-[#11141f]':'bg-slate-50'}`}>
+                <h2 className={`text-lg font-bold ${textHeader}`}>Studio Settings</h2>
+                <button onClick={onClose} className={`${textMuted} hover:text-red-400 transition-colors p-1`}>
+                    <i className="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <div className="p-5 space-y-5 max-h-[70vh] overflow-y-auto">
+                {/* Theme */}
+                <div>
+                    <label className="block text-xs font-bold text-red-500 uppercase tracking-widest mb-2">Theme</label>
+                    <div className="flex gap-3">
+                        {['dark','light'].map(t=>(
+                            <button key={t} onClick={()=>{setTheme(t);localStorage.setItem('appTheme',t);}}
+                                className={`flex-1 touch-target flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all border
+                                    ${theme===t?'bg-red-600 border-red-500 text-white':isDark?'text-slate-400 border-slate-700 hover:bg-slate-800':'text-slate-600 bg-slate-100 border-slate-200 hover:bg-slate-200'}`}>
+                                <i className={`fa-solid ${t==='dark'?'fa-moon':'fa-sun'}`}/> {t.charAt(0).toUpperCase()+t.slice(1)}
+                            </button>
+                        ))}
+                    </div>
+                </div>
                 {/* API Key */}
                 <div>
-                    <label className="block text-xs font-bold text-red-500 uppercase tracking-widest mb-2">Google Gemini API Key</label>
+                    <label className="block text-xs font-bold text-red-500 uppercase tracking-widest mb-2">Gemini API Key</label>
                     <div className="relative">
                         <i className={`fa-solid fa-key absolute left-3 top-3.5 ${textMuted}`}></i>
                         <input type="password"
                             className={`w-full rounded-lg py-3 pl-10 pr-4 text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-all ${bgInput}`}
                             placeholder="Paste key starting with AIza..."
                             value={apiKey}
-                            onChange={e => { const k = e.target.value; setApiKey(k); localStorage.setItem('geminiApiKey', k); }} />
+                            onChange={e=>{const k=e.target.value;setApiKey(k);localStorage.setItem('geminiApiKey',k);}}/>
                     </div>
-                    {/* FIX: API key security warning */}
-                    <div className={`mt-2 flex items-start gap-2 p-2 rounded-lg text-xs ${isDark ? 'bg-yellow-900/20 border border-yellow-700/40 text-yellow-400' : 'bg-yellow-50 border border-yellow-300 text-yellow-700'}`}>
+                    <div className={`mt-2 flex items-start gap-2 p-2 rounded-lg text-xs ${isDark?'bg-yellow-900/20 border border-yellow-700/40 text-yellow-400':'bg-yellow-50 border border-yellow-300 text-yellow-700'}`}>
                         <i className="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
-                        <span>Key is stored in browser localStorage. Do not use on shared/public devices.</span>
+                        <span>Stored in browser localStorage. Don't use on shared devices.</span>
                     </div>
-                    <div className={`text-xs ${textMuted} mt-3 space-y-1 p-3 ${isDark ? 'bg-[#11141f] border border-slate-800 rounded-lg' : 'bg-slate-50 border border-slate-200 rounded-lg'}`}>
-                        <p className="font-semibold text-red-400">How to get your API Key:</p>
-                        <ol className="list-decimal list-inside ml-2 space-y-1">
+                    <div className={`text-xs ${textMuted} mt-3 p-3 space-y-1 ${isDark?'bg-[#11141f] border border-slate-800':'bg-slate-50 border border-slate-200'} rounded-lg`}>
+                        <p className="font-semibold text-red-400">How to get your key:</p>
+                        <ol className="list-decimal list-inside ml-2 space-y-0.5">
                             <li>Go to <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-red-400 hover:underline">Google AI Studio</a>.</li>
-                            <li>Click <strong>Create API key</strong> and copy the string.</li>
-                            <li>Paste above and click Save.</li>
+                            <li>Click <strong>Create API key</strong> and copy it.</li>
+                            <li>Paste above and Save.</li>
                         </ol>
                     </div>
                 </div>
             </div>
-            <div className={`p-4 ${isDark ? 'bg-[#11141f]' : 'bg-slate-50'} flex items-center justify-between`}>
-                <button onClick={onChangePin}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isDark ? 'text-slate-400 hover:text-red-400 hover:bg-slate-800' : 'text-slate-500 hover:text-red-500 hover:bg-slate-100'}`}>
-                    <i className="fa-solid fa-key text-xs"/>
-                    Change PIN
+            <div className={`p-4 ${isDark?'bg-[#11141f]':'bg-slate-50'} flex items-center justify-between`}>
+                <button onClick={onLogout}
+                    className={`touch-target flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${isDark?'text-slate-400 hover:text-red-400 hover:bg-slate-800':'text-slate-500 hover:text-red-500 hover:bg-slate-100'}`}>
+                    <i className="fa-solid fa-right-from-bracket text-xs"/> Log Out
                 </button>
-                <button onClick={onClose} className="px-6 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-500 transition-colors neon-button">
+                <button onClick={onClose} className="touch-target px-6 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-500 transition-colors neon-button">
                     Save & Close
                 </button>
             </div>
@@ -438,164 +487,262 @@ const SettingsModal = React.memo(({ apiKey, setApiKey, theme, setTheme, onClose,
     </div>
 ));
 
-/* ─── PIN GATE WRAPPER ───────────────────────────────────────── */
+/* ─── LOGIN GATE ─────────────────────────────────────────────── */
 const App = () => {
-    const hasPin    = !!localStorage.getItem(PIN_KEY);
-    const sessionOk = !!sessionStorage.getItem(SESSION);
-    const [unlocked, setUnlocked] = React.useState(sessionOk);
-
-    if (!unlocked)
-        return <PinScreen mode={hasPin ? 'enter' : 'set'} onSuccess={() => setUnlocked(true)} />;
-
-    return <Studio onLock={() => setUnlocked(false)} />;
+    const [authed, setAuthed] = React.useState(()=>!!sessionStorage.getItem(SESSION_KEY));
+    if (!authed) return <LoginScreen onSuccess={()=>setAuthed(true)} />;
+    return <Studio onLogout={()=>{sessionStorage.removeItem(SESSION_KEY);setAuthed(false);}} />;
 };
 
 /* ─── MAIN STUDIO ────────────────────────────────────────────── */
-const Studio = ({ onLock }) => {
-    const [apiKey,    setApiKey]    = React.useState(() => localStorage.getItem('geminiApiKey') || '');
+const Studio = ({ onLogout }) => {
+    const [apiKey,    setApiKey]    = React.useState(()=>localStorage.getItem('geminiApiKey')||'');
     const [script,    setScript]    = React.useState('');
-    const [category,  setCategory]  = React.useState(() => localStorage.getItem('defaultCategory') || 'Breaking News');
-    const [voice,     setVoice]     = React.useState(() => localStorage.getItem('defaultVoice')    || 'Puck');
+    const [category,  setCategory]  = React.useState(()=>localStorage.getItem('defaultCategory')||'Breaking News');
+    const [voice,     setVoice]     = React.useState(()=>localStorage.getItem('defaultVoice')||'Puck');
     const [speedLevel,setSpeedLevel]= React.useState(2);
     const [pitch,     setPitch]     = React.useState('normal');
     const [lang,      setLang]      = React.useState('auto');
-    const [theme,     setTheme]     = React.useState(() => localStorage.getItem('appTheme') || 'dark');
+    const [theme,     setTheme]     = React.useState(()=>localStorage.getItem('appTheme')||'dark');
     const [loading,   setLoading]   = React.useState(false);
-    const [retryInfo, setRetryInfo] = React.useState('');   /* NEW: retry progress */
+    const [retryInfo, setRetryInfo] = React.useState('');
     const [audioSrc,  setAudioSrc]  = React.useState(null);
+    const [audioFile, setAudioFile] = React.useState('');
     const [error,     setError]     = React.useState('');
     const [showSettings, setShowSettings] = React.useState(false);
     const [previewingVoice, setPreviewingVoice] = React.useState(null);
-    const prevAudioRef = React.useRef(null); /* track prev URL for revoke */
+    const prevAudioRef = React.useRef(null);
 
-    /* Theme tokens */
-    const isDark         = theme === 'dark';
-    const bgCard         = isDark ? 'bg-[#1f2937] border-slate-800'  : 'bg-white border-slate-200 shadow-lg';
-    const textHeader     = isDark ? 'text-white'     : 'text-slate-900';
-    const textPrimary    = isDark ? 'text-slate-100' : 'text-slate-800';
-    const textMuted      = isDark ? 'text-slate-400' : 'text-slate-500';
-    const bgInput        = isDark ? 'bg-[#11141f] border-slate-800 text-white placeholder:text-slate-600' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400';
-    const borderSubtle   = isDark ? 'border-slate-700' : 'border-slate-300';
-    const bgNav          = isDark ? 'header-bg-dark border-slate-800' : 'header-bg-light border-slate-200';
-    const bgControlHover = isDark ? 'hover:bg-[#323f53]' : 'hover:bg-slate-200';
+    const isDark         = theme==='dark';
+    const bgCard         = isDark?'bg-[#1f2937] border-slate-800':'bg-white border-slate-200 shadow-lg';
+    const textHeader     = isDark?'text-white':'text-slate-900';
+    const textPrimary    = isDark?'text-slate-100':'text-slate-800';
+    const textMuted      = isDark?'text-slate-400':'text-slate-500';
+    const bgInput        = isDark?'bg-[#11141f] border-slate-800 text-white placeholder:text-slate-600':'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400';
+    const borderSubtle   = isDark?'border-slate-700':'border-slate-300';
+    const bgNav          = isDark?'header-bg-dark border-slate-800':'header-bg-light border-slate-200';
+    const bgControlHover = isDark?'hover:bg-[#323f53]':'hover:bg-slate-200';
 
-    /* Persist voice/category changes */
-    const handleCategoryChange = React.useCallback(v => { setCategory(v); localStorage.setItem('defaultCategory', v); }, []);
-    const handleVoiceChange    = React.useCallback(v => { setVoice(v);    localStorage.setItem('defaultVoice', v);    }, []);
+    const handleCategoryChange = React.useCallback(v=>{setCategory(v);localStorage.setItem('defaultCategory',v);},[]);
+    const handleVoiceChange    = React.useCallback(v=>{setVoice(v);localStorage.setItem('defaultVoice',v);},[]);
 
-    /* FIX: revoke old blob URL before setting a new one */
-    const setAudio = url => {
+    const setAudio = (url, filename='') => {
         if (prevAudioRef.current) URL.revokeObjectURL(prevAudioRef.current);
         prevAudioRef.current = url;
         setAudioSrc(url);
+        setAudioFile(filename);
     };
 
-    /* Voice preview */
     const generateVoicePreview = async name => {
-        if (!apiKey) { setShowSettings(true); setError('Add your API key in Settings first.'); return; }
+        if (!apiKey){setShowSettings(true);setError('Add your API key in Settings first.');return;}
         setPreviewingVoice(name);
         try {
-            const url = await callTTS(apiKey, name, PREVIEW_SCRIPT);
+            const vd            = VOICES.find(v=>v.name===name);
+            const previewPrompt = vd?.accent ? `[accent: ${vd.accent}]\n${PREVIEW_SCRIPT}` : PREVIEW_SCRIPT;
+            const url = await callTTS(apiKey, name, previewPrompt);
             const audio = new Audio(url);
-            audio.onended = () => { URL.revokeObjectURL(url); setPreviewingVoice(null); };
-            audio.play().catch(() => setPreviewingVoice(null));
-        } catch (err) {
-            setError('Preview failed: ' + err.message);
-        } finally {
-            /* FIX: always clear loading state */
-            setPreviewingVoice(null);
-        }
+            audio.onended=()=>{URL.revokeObjectURL(url);setPreviewingVoice(null);};
+            audio.play().catch(()=>setPreviewingVoice(null));
+        } catch(err){ setError('Preview failed: '+err.message); }
+        finally { setPreviewingVoice(null); }
     };
 
-    /* Main generation — with retry progress */
     const generateVoiceover = async () => {
-        if (!apiKey) { setShowSettings(true); setError('Add your API key in Settings first.'); return; }
-        if (!script.trim()) { setError('Please enter a script.'); return; }
-        if (script.length > MAX_CHARS) { setError(`Script too long. Max ${MAX_CHARS} chars.`); return; }
+        if (!apiKey){setShowSettings(true);setError('Add your API key in Settings first.');return;}
+        if (!script.trim()){setError('Please enter a script.');return;}
+        if (script.length>MAX_CHARS){setError(`Script too long. Max ${MAX_CHARS} chars.`);return;}
 
         setLoading(true); setError(''); setRetryInfo(''); setAudioSrc(null);
 
-        const cat = CATEGORIES.find(c => c.id === category);
-        const prompt = buildPrompt(script, category, cat.promptMod, speedText(speedLevel), pitchHint(pitch), langHint(lang), voice);
+        const cat       = CATEGORIES.find(c=>c.id===category);
+        const voiceData = VOICES.find(v=>v.name===voice);
+        const accent    = voiceData?.accent || '';
+        const prompt    = buildPrompt(script, category, cat.promptMod, speedShort(speedLevel), pitchHint(pitch), langHint(lang), voice, accent);
 
-        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        for (let attempt=0; attempt<MAX_RETRIES; attempt++) {
             try {
-                const url = await callTTS(apiKey, voice, prompt);
-                setAudio(url);
+                const url      = await callTTS(apiKey, voice, prompt);
+                const filename = makeFilename(category, voice);
+                setAudio(url, filename);
+                setRetryInfo('');
                 return;
-            } catch (err) {
-                if (err.message.startsWith('QUOTA:') || attempt === MAX_RETRIES - 1) {
-                    setError(err.message.replace('QUOTA:', ''));
+            } catch(err) {
+                if (err.message.startsWith('QUOTA:') || attempt===MAX_RETRIES-1) {
+                    setError(err.message.replace('QUOTA:',''));
                     return;
                 }
-                /* NEW: show retry progress to user */
-                const wait = Math.pow(2, attempt) * 1000;
-                setRetryInfo(`Attempt ${attempt + 1}/${MAX_RETRIES} failed — retrying in ${wait / 1000}s…`);
+                const wait = Math.pow(2,attempt)*1000;
+                setRetryInfo(`Attempt ${attempt+1}/${MAX_RETRIES} failed — retrying in ${wait/1000}s…`);
                 await delay(wait);
             }
         }
+        setLoading(false);
     };
 
-    /* FIX: Ctrl/Cmd + Enter keyboard shortcut */
-    React.useEffect(() => {
-        const handler = e => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !loading) generateVoiceover();
-        };
-        window.addEventListener('keydown', handler);
-        return () => window.removeEventListener('keydown', handler);
-    }, [script, voice, category, speedLevel, pitch, lang, apiKey, loading]);
+    React.useEffect(()=>{
+        const h = e => { if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&!loading) generateVoiceover(); };
+        window.addEventListener('keydown',h);
+        return ()=>window.removeEventListener('keydown',h);
+    },[script,voice,category,speedLevel,pitch,lang,apiKey,loading]);
 
-    /* Clean up blob URL on unmount */
-    React.useEffect(() => () => { if (prevAudioRef.current) URL.revokeObjectURL(prevAudioRef.current); }, []);
+    React.useEffect(()=>()=>{if(prevAudioRef.current)URL.revokeObjectURL(prevAudioRef.current);},[]);
 
-    const canGenerate = !loading && script.trim().length > 0 && script.length <= MAX_CHARS && !!apiKey;
+    const canGenerate = !loading && script.trim().length>0 && script.length<=MAX_CHARS && !!apiKey;
 
     return (
-        <div className={`min-h-screen font-sans selection:bg-red-500 selection:text-white ${isDark ? 'dark-theme' : 'light-theme'}`}>
+        <div className={`min-h-screen font-sans selection:bg-red-500 selection:text-white ${isDark?'dark-theme':'light-theme'}`}>
 
             {/* ── NAV ── */}
             <nav className={`${bgNav} border-b sticky top-0 z-20 transition-colors`}>
-                <div className="max-w-7xl mx-auto px-6 h-24 flex items-center justify-between">
-                    <div className="flex items-center gap-5">
-                        <IshanBanglaLogo size="sm" />
-                        <div className={`h-10 w-px ${isDark ? 'bg-slate-700' : 'bg-slate-300'}`}/>
-                        <div>
-                            <h1 className={`font-extrabold text-2xl leading-snug tracking-tight ${textHeader}`}>AI News Studio</h1>
-                            <p className={`text-xs ${textMuted} font-medium uppercase tracking-[0.18em]`}>Broadcast Voice Suite</p>
+                <div className="max-w-7xl mx-auto px-4 lg:px-6 h-16 lg:h-20 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        {/* Mobile: xs logo only. Desktop: sm logo + title */}
+                        <div className="lg:hidden">
+                            <IshanBanglaLogo size="xs" />
+                        </div>
+                        <div className="hidden lg:block">
+                            <IshanBanglaLogo size="sm" />
+                        </div>
+                        <div className={`hidden sm:block h-8 w-px ${isDark?'bg-slate-700':'bg-slate-300'}`}/>
+                        <div className="hidden sm:block">
+                            <h1 className={`font-extrabold text-lg lg:text-2xl leading-snug tracking-tight ${textHeader}`}>AI News Studio</h1>
+                            <p className={`text-[10px] lg:text-xs ${textMuted} font-medium uppercase tracking-[0.15em]`}>Broadcast Voice Suite</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                    <button onClick={() => { sessionStorage.removeItem(SESSION); onLock(); }}
-                        className={`h-10 w-10 rounded-full flex items-center justify-center transition-all shadow-md ${isDark ? 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-red-400' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-red-500'}`}
-                        title="Lock Studio">
-                        <i className="fa-solid fa-lock text-sm"></i>
-                    </button>
-                    <button onClick={() => setShowSettings(true)}
-                        className={`h-10 w-10 rounded-full flex items-center justify-center transition-all shadow-md
-                            ${apiKey
-                                ? (isDark ? 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800')
-                                : 'bg-red-500/10 text-red-500 ring-2 ring-red-500 animate-pulse'
-                            }`} title="Settings">
-                        <i className="fa-solid fa-gear"></i>
-                    </button>
-                    </div>{/* end nav-buttons */}
+                        <button onClick={onLogout}
+                            className={`h-10 w-10 rounded-full flex items-center justify-center transition-all ${isDark?'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-red-400':'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-red-500'}`}
+                            title="Log Out">
+                            <i className="fa-solid fa-right-from-bracket text-sm"></i>
+                        </button>
+                        <button onClick={()=>setShowSettings(true)}
+                            className={`h-10 w-10 rounded-full flex items-center justify-center transition-all
+                                ${apiKey?(isDark?'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white':'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-800'):'bg-red-500/10 text-red-500 ring-2 ring-red-500 animate-pulse'}`}
+                            title="Settings">
+                            <i className="fa-solid fa-gear"></i>
+                        </button>
+                    </div>
                 </div>
             </nav>
 
-            <main className="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
+            {/* ── MAIN ── */}
+            {/* Mobile: script first (order-1), controls second (order-2).
+                Desktop: controls left (lg:order-1), script right (lg:order-2). */}
+            <main className="max-w-7xl mx-auto px-4 lg:px-6 py-4 lg:py-6 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-8">
 
-                {/* ── LEFT PANEL ── */}
-                <div className="lg:col-span-4 space-y-8">
+                {/* ── RIGHT / SCRIPT PANEL (first on mobile) ── */}
+                <div className="order-1 lg:order-2 lg:col-span-8 flex flex-col gap-4 lg:gap-6">
+
+                    {/* Script editor */}
+                    <div className={`${bgCard} rounded-2xl border ${borderSubtle} shadow-xl overflow-hidden flex flex-col`}>
+                        <div className={`${isDark?'bg-[#11141f]':'bg-slate-50'} px-4 py-2.5 border-b ${borderSubtle} flex justify-between items-center`}>
+                            <span className={`text-xs font-bold ${textMuted} uppercase tracking-wider`}>Script</span>
+                            <div className="flex items-center gap-3">
+                                {/* Hide Ctrl+Enter hint on mobile — no physical keyboard */}
+                                <span className={`hidden sm:flex items-center gap-1 text-xs ${textMuted}`}>
+                                    <kbd className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${isDark?'bg-slate-700 text-slate-400':'bg-slate-200 text-slate-500'}`}>Ctrl</kbd>
+                                    +
+                                    <kbd className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${isDark?'bg-slate-700 text-slate-400':'bg-slate-200 text-slate-500'}`}>↵</kbd>
+                                </span>
+                                <span className={`text-xs font-medium ${script.length>MAX_CHARS?'text-red-400':textMuted}`}>
+                                    {script.length}/{MAX_CHARS}
+                                </span>
+                            </div>
+                        </div>
+                        <textarea
+                            className={`w-full bg-transparent p-4 lg:p-6 outline-none resize-none text-base lg:text-xl leading-relaxed bengali-text ${textPrimary} ${isDark?'placeholder:text-slate-600':'placeholder:text-slate-400'}`}
+                            style={{minHeight:'314px'}}
+                            placeholder="Enter your news script here (Bengali or English)…"
+                            value={script}
+                            onChange={e=>{if(e.target.value.length<=MAX_CHARS)setScript(e.target.value);}}
+                        />
+                    </div>
+
+                    {/* Error */}
+                    {error && (
+                        <div className="bg-red-500/10 border border-red-700 text-red-400 px-4 py-3 rounded-xl text-sm flex items-center gap-3 animate-fade-in">
+                            <i className="fa-solid fa-triangle-exclamation shrink-0"></i>
+                            <span className="font-semibold">{error}</span>
+                        </div>
+                    )}
+
+                    {/* Retry info */}
+                    {retryInfo && (
+                        <div className={`px-4 py-3 rounded-xl text-sm flex items-center gap-3 animate-fade-in border ${isDark?'bg-yellow-900/20 border-yellow-700/40 text-yellow-400':'bg-yellow-50 border-yellow-300 text-yellow-700'}`}>
+                            <i className="fa-solid fa-rotate fa-spin shrink-0"></i>
+                            <span>{retryInfo}</span>
+                        </div>
+                    )}
+
+                    {/* Action card */}
+                    <div className={`${bgCard} rounded-2xl border ${borderSubtle} p-4 lg:p-6 shadow-xl`}>
+                        {!audioSrc && (
+                            <button onClick={generateVoiceover} disabled={!canGenerate}
+                                className={`touch-target w-full py-3.5 lg:py-4 rounded-xl font-bold text-base lg:text-lg shadow-xl transition-all flex items-center justify-center gap-3
+                                    ${canGenerate?'bg-red-700 hover:bg-red-600 text-white neon-button':`${isDark?'bg-slate-700 text-slate-400':'bg-slate-300 text-slate-500'} cursor-not-allowed`}`}>
+                                {loading
+                                    ? <><i className="fa-solid fa-circle-notch fa-spin"></i> Broadcasting…</>
+                                    : <><i className="fa-solid fa-bullhorn"></i> Generate Voiceover</>}
+                            </button>
+                        )}
+
+                        {/* Voice selector */}
+                        <div className={`mt-4 lg:mt-5 pt-4 border-t ${borderSubtle}`}>
+                            <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-3">VOICE TALENT</h3>
+                            <VoiceSelector
+                                voice={voice} onChange={handleVoiceChange}
+                                onPreview={generateVoicePreview} previewingVoice={previewingVoice}
+                                isDark={isDark} textPrimary={textPrimary} textMuted={textMuted} />
+                        </div>
+
+                        {/* Audio player */}
+                        {audioSrc && (
+                            <div className="animate-fade-in mt-5 pt-5 border-t border-slate-700">
+                                <div className={`flex items-center justify-between mb-4`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-10 w-10 bg-green-500/10 rounded-full flex items-center justify-center border border-green-700 text-green-500 shrink-0">
+                                            <i className="fa-solid fa-check"></i>
+                                        </div>
+                                        <div>
+                                            <p className={`font-bold ${textPrimary} text-base`}>Broadcast Ready</p>
+                                            <p className={`text-xs ${textMuted}`}>{VOICES.find(v=>v.name===voice)?.label} · {speedLabel(speedLevel)}</p>
+                                        </div>
+                                    </div>
+                                    <div className="bar-container">
+                                        <div className="bar"/><div className="bar"/><div className="bar"/>
+                                        <div className="bar"/><div className="bar"/>
+                                    </div>
+                                </div>
+                                <audio controls src={audioSrc} className="w-full h-10 mb-4 rounded-lg" autoPlay></audio>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button onClick={()=>{setAudio(null);setRetryInfo('');}}
+                                        className={`touch-target py-3 rounded-xl text-sm font-semibold ${isDark?'bg-slate-700 text-slate-300 hover:bg-slate-600':'bg-slate-200 text-slate-700 hover:bg-slate-300'} transition-colors`}>
+                                        <i className="fa-solid fa-file-circle-plus mr-1.5"></i>New Script
+                                    </button>
+                                    <a href={audioSrc} download={audioFile}
+                                        className="touch-target flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold bg-red-600 text-white hover:bg-red-500 transition-colors neon-button">
+                                        <i className="fa-solid fa-download"></i>Download WAV
+                                    </a>
+                                </div>
+                                <p className={`text-[10px] ${textMuted} mt-2 text-center truncate`}>{audioFile}</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* ── LEFT / CONTROLS PANEL (second on mobile) ── */}
+                <div className="order-2 lg:order-1 lg:col-span-4 flex flex-col gap-4 lg:gap-6 lg:space-y-0">
 
                     {/* Segment selector */}
-                    <div className={`${bgCard} p-6 rounded-2xl shadow-xl border ${borderSubtle}`}>
-                        <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-4">SEGMENT TYPE</h3>
+                    <div className={`${bgCard} p-4 lg:p-5 rounded-2xl shadow-xl border ${borderSubtle}`}>
+                        <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-3">SEGMENT TYPE</h3>
                         <CategorySelector category={category} onChange={handleCategoryChange} isDark={isDark} bgControlHover={bgControlHover} />
                     </div>
 
                     {/* Fine tuning */}
-                    <div className={`${bgCard} p-6 rounded-2xl shadow-xl border ${borderSubtle}`}>
-                        <h3 className={`text-xs font-bold text-red-500 uppercase tracking-widest mb-4 border-b ${borderSubtle} pb-2`}>FINE TUNING</h3>
+                    <div className={`${bgCard} p-4 lg:p-5 rounded-2xl shadow-xl border ${borderSubtle}`}>
+                        {/* Desktop label shown inside component; mobile label is the toggle */}
+                        <h3 className="hidden lg:block text-xs font-bold text-red-500 uppercase tracking-widest mb-3 border-b pb-2 border-slate-700">FINE TUNING</h3>
                         <FineTuning
                             speedLevel={speedLevel} setSpeedLevel={setSpeedLevel}
                             pitch={pitch} setPitch={setPitch}
@@ -604,125 +751,14 @@ const Studio = ({ onLock }) => {
                             bgControlHover={bgControlHover} borderSubtle={borderSubtle} />
                     </div>
                 </div>
-
-                {/* ── RIGHT PANEL ── */}
-                <div className="lg:col-span-8 flex flex-col gap-6">
-
-                    {/* Script editor */}
-                    <div className={`flex-1 ${bgCard} rounded-2xl border ${borderSubtle} shadow-2xl overflow-hidden flex flex-col`}>
-                        <div className={`${isDark ? 'bg-[#11141f]' : 'bg-slate-50'} px-6 py-3 border-b ${borderSubtle} flex justify-between items-center`}>
-                            <span className={`text-sm font-bold ${textMuted} uppercase tracking-wider`}>Teleprompter Script</span>
-                            <div className="flex items-center gap-3">
-                                <span className={`text-xs ${textMuted}`}>
-                                    <kbd className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-500'}`}>Ctrl</kbd>
-                                    <span className="mx-1">+</span>
-                                    <kbd className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-500'}`}>↵</kbd>
-                                    <span className="ml-1">to generate</span>
-                                </span>
-                                <span className={`text-xs font-medium ${script.length > MAX_CHARS ? 'text-red-400' : textMuted}`}>
-                                    {script.length} / {MAX_CHARS}
-                                </span>
-                            </div>
-                        </div>
-                        <textarea
-                            className={`flex-1 w-full bg-transparent p-6 outline-none resize-none text-xl leading-relaxed bengali-text ${textPrimary} ${isDark ? 'placeholder:text-slate-600' : 'placeholder:text-slate-400'}`}
-                            style={{ minHeight: '220px' }}
-                            placeholder="Enter your news script here (Bengali or English)…"
-                            value={script}
-                            onChange={e => { if (e.target.value.length <= MAX_CHARS) setScript(e.target.value); }}
-                        />
-                    </div>
-
-                    {/* Error toast */}
-                    {error && (
-                        <div className="bg-red-500/10 border border-red-700 text-red-400 px-6 py-4 rounded-xl text-sm flex items-center gap-3 animate-fade-in shadow-lg">
-                            <i className="fa-solid fa-triangle-exclamation text-lg shrink-0"></i>
-                            <span className="font-semibold">{error}</span>
-                        </div>
-                    )}
-
-                    {/* NEW: Retry progress toast */}
-                    {retryInfo && (
-                        <div className={`px-6 py-3 rounded-xl text-sm flex items-center gap-3 animate-fade-in border ${isDark ? 'bg-yellow-900/20 border-yellow-700/40 text-yellow-400' : 'bg-yellow-50 border-yellow-300 text-yellow-700'}`}>
-                            <i className="fa-solid fa-rotate fa-spin shrink-0"></i>
-                            <span>{retryInfo}</span>
-                        </div>
-                    )}
-
-                    {/* Action card */}
-                    <div className={`${bgCard} rounded-2xl border ${borderSubtle} p-6 shadow-2xl`}>
-
-                        {!audioSrc && (
-                            <button onClick={generateVoiceover} disabled={!canGenerate}
-                                className={`w-full py-4 rounded-xl font-bold text-lg shadow-xl transition-all flex items-center justify-center gap-3
-                                    ${canGenerate
-                                        ? 'bg-red-700 hover:bg-red-600 text-white shadow-red-900/40 neon-button'
-                                        : `${isDark ? 'bg-slate-700 text-slate-400' : 'bg-slate-300 text-slate-500'} cursor-not-allowed`
-                                    }`}>
-                                {loading
-                                    ? <><i className="fa-solid fa-circle-notch fa-spin"></i> Broadcasting…</>
-                                    : <><i className="fa-solid fa-bullhorn text-xl"></i> Generate Voiceover <span className={`text-xs ml-1 opacity-60`}>(Ctrl+↵)</span></>
-                                }
-                            </button>
-                        )}
-
-                        {/* Voice selector */}
-                        <div className={`mt-6 ${bgCard} p-6 rounded-2xl shadow-xl border ${borderSubtle}`}>
-                            <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-4">VOICE TALENT</h3>
-                            <VoiceSelector
-                                voice={voice} onChange={handleVoiceChange}
-                                onPreview={generateVoicePreview} previewingVoice={previewingVoice}
-                                isDark={isDark} textPrimary={textPrimary} textMuted={textMuted} bgControlHover={bgControlHover} />
-                        </div>
-
-                        {/* Audio player */}
-                        {audioSrc && (
-                            <div className="animate-fade-in mt-6">
-                                <div className={`flex items-center justify-between mb-5 pb-5 border-b ${borderSubtle}`}>
-                                    <div className="flex items-center gap-4">
-                                        <div className="h-12 w-12 bg-green-500/10 rounded-full flex items-center justify-center border border-green-700 text-green-500">
-                                            <i className="fa-solid fa-check text-xl"></i>
-                                        </div>
-                                        <div>
-                                            <h3 className={`font-bold ${textPrimary} text-xl`}>Broadcast Complete</h3>
-                                            <p className={`text-sm ${textMuted}`}>
-                                                {VOICES.find(v => v.name === voice)?.label} · {speedLabel(speedLevel)} pace
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div className="bar-container">
-                                        <div className="bar"/><div className="bar"/><div className="bar"/>
-                                        <div className="bar"/><div className="bar"/>
-                                    </div>
-                                </div>
-                                <audio controls src={audioSrc} className="w-full h-10 mb-6 rounded-lg" autoPlay></audio>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <button onClick={() => { setAudio(null); setRetryInfo(''); }}
-                                        className={`py-3 rounded-xl text-sm font-semibold ${isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'} transition-colors`}>
-                                        <i className="fa-solid fa-file-circle-plus mr-2"></i>New Script
-                                    </button>
-                                    <a href={audioSrc} download={`${category.toLowerCase().replace(/[\s&]+/g,'-')}-${voice}.wav`}
-                                        className="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold bg-red-600 text-white hover:bg-red-500 transition-colors neon-button">
-                                        <i className="fa-solid fa-download"></i>Download WAV
-                                    </a>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
             </main>
 
             {showSettings && (
                 <SettingsModal
                     apiKey={apiKey} setApiKey={setApiKey}
                     theme={theme} setTheme={setTheme}
-                    onClose={() => setShowSettings(false)}
-                    onChangePin={() => {
-                        localStorage.removeItem(PIN_KEY);
-                        sessionStorage.removeItem(SESSION);
-                        setShowSettings(false);
-                        onLock();
-                    }}
+                    onClose={()=>setShowSettings(false)}
+                    onLogout={()=>{setShowSettings(false);onLogout();}}
                     isDark={isDark} bgCard={bgCard} textHeader={textHeader}
                     textMuted={textMuted} bgInput={bgInput} borderSubtle={borderSubtle} />
             )}

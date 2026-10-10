@@ -49,6 +49,15 @@
         @keyframes shake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-8px)} 40%,80%{transform:translateX(8px)} }
         .shake { animation: shake .4s ease; }
 
+        /* Speed slider: large thumb that is easy to drag on a phone */
+        .speed-range { -webkit-appearance:none; appearance:none; height:36px; background:transparent; cursor:pointer; }
+        .speed-range::-webkit-slider-runnable-track { height:6px; border-radius:99px; background:#475569; }
+        .speed-range::-webkit-slider-thumb { -webkit-appearance:none; width:26px; height:26px; margin-top:-10px; border-radius:50%; background:#dc2626; border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.4); }
+        .speed-range::-moz-range-track { height:6px; border-radius:99px; background:#475569; }
+        .speed-range::-moz-range-thumb { width:20px; height:20px; border-radius:50%; background:#dc2626; border:3px solid #fff; }
+        .light-theme .speed-range::-webkit-slider-runnable-track, .light-theme .speed-range::-moz-range-track { background:#cbd5e1; }
+        button, a, input { touch-action: manipulation; }
+
         /* Mobile touch targets */
         @media (max-width: 1023px) {
             .touch-target { min-height: 44px; }
@@ -195,6 +204,9 @@ const pcmToWav = (pcmData, sampleRate = 24000) => {
     new Uint8Array(buf,44).set(pcmData);
     return buf;
 };
+
+/* Tiny silent clip used to unlock audio playback on iPhone */
+const SILENT_WAV = URL.createObjectURL(new Blob([pcmToWav(new Uint8Array(480))], {type:'audio/wav'}));
 
 const b64ToBytes = b64 => {
     const bin = atob(b64), bytes = new Uint8Array(bin.length);
@@ -373,11 +385,14 @@ const LoginScreen = ({ onSuccess }) => {
         }, 400);
     };
 
-    const iStyle = (base={}) => ({ width:'100%', background:'#0d111c', border:'1px solid #334155', borderRadius:'0.6rem', color:'#f1f5f9', fontSize:'0.95rem', outline:'none', boxSizing:'border-box', ...base });
+    const iStyle = (base={}) => ({ width:'100%', background:'#0d111c', border:'1px solid #334155', borderRadius:'0.6rem', color:'#f1f5f9', fontSize:'1rem', outline:'none', boxSizing:'border-box', ...base });
 
     return (
         <div className="login-screen">
-            <div style={{marginBottom:'1.75rem'}}><IshanBanglaLogo size="md" /></div>
+            <div style={{marginBottom:'1.75rem'}}>
+                <div className="lg:hidden"><IshanBanglaLogo size="sm" /></div>
+                <div className="hidden lg:block"><IshanBanglaLogo size="md" /></div>
+            </div>
             <div style={{width:'100%',maxWidth:'400px',background:'#1f2937',borderRadius:'1.25rem',border:'1px solid #334155',overflow:'hidden',boxShadow:'0 25px 60px rgba(0,0,0,.5)'}}>
                 <div style={{background:'#0b0e16',padding:'1.1rem 1.5rem',borderBottom:'1px solid #334155',display:'flex',alignItems:'center',gap:'0.75rem'}}>
                     <div style={{width:34,height:34,background:'#ef4444',borderRadius:'0.55rem',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
@@ -412,7 +427,8 @@ const LoginScreen = ({ onSuccess }) => {
                                 onFocus={e=>e.target.style.borderColor='#ef4444'}
                                 onBlur={e=>e.target.style.borderColor='#334155'} />
                             <button type="button" onClick={()=>setShowPass(s=>!s)}
-                                style={{position:'absolute',right:'0.8rem',top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:'#475569',cursor:'pointer',padding:0,fontSize:'0.9rem'}}>
+                                aria-label={showPass?'Hide password':'Show password'}
+                                style={{position:'absolute',right:'0.25rem',top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:'#475569',cursor:'pointer',padding:'0.75rem',fontSize:'0.9rem'}}>
                                 <i className={`fa-solid ${showPass?'fa-eye-slash':'fa-eye'}`}/>
                             </button>
                         </div>
@@ -437,7 +453,7 @@ const LoginScreen = ({ onSuccess }) => {
 
 /* ─── CATEGORY SELECTOR ──────────────────────────────────────── */
 const CategorySelector = React.memo(({ category, onChange, isDark, bgControlHover }) => (
-    <div className="grid grid-cols-2 gap-2 max-h-64 lg:max-h-80 overflow-y-auto pr-1">
+    <div className="grid grid-cols-2 gap-2 lg:max-h-80 lg:overflow-y-auto lg:pr-1">
         {CATEGORIES.map(cat => {
             const sel = category === cat.id;
             return (
@@ -475,7 +491,7 @@ const VoiceSelector = React.memo(({ voice, onChange, onPreview, previewingVoice,
                         <div className={`text-[10px] ${textMuted} mt-0.5 truncate`}>{v.desc}</div>
                     </div>
                     <button onClick={e=>{e.stopPropagation();onPreview(v.name);}} disabled={isLoading}
-                        className={`ml-2 px-2.5 py-1 text-[10px] font-medium rounded-full flex items-center gap-1 shrink-0 transition-colors
+                        className={`ml-2 px-3.5 py-1 min-h-[40px] lg:min-h-0 text-xs lg:text-[10px] font-medium rounded-full flex items-center gap-1 shrink-0 transition-colors
                             ${isLoading?'bg-red-800 text-white cursor-not-allowed':'bg-red-600 text-white hover:bg-red-500 neon-button'}`}>
                         {isLoading
                             ? <><i className="fa-solid fa-spinner fa-spin"></i></>
@@ -503,20 +519,20 @@ const SpeedSlider = ({ value, onChange, baseWpm, segmentLabel, isDark, textPrima
             </div>
             <div className="flex items-center gap-3">
                 <button onClick={()=>onChange(Math.max(-SPEED_RANGE, value-SPEED_STEP))} title="Slower"
-                    className={`touch-target h-8 w-8 rounded-full shrink-0 ${isDark?'bg-slate-700 text-slate-300 hover:bg-slate-600':'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>
+                    className={`touch-target h-11 w-11 lg:h-8 lg:w-8 rounded-full shrink-0 ${isDark?'bg-slate-700 text-slate-300 hover:bg-slate-600':'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>
                     <i className="fa-solid fa-minus text-xs"/>
                 </button>
                 <input type="range" min={-SPEED_RANGE} max={SPEED_RANGE} step={SPEED_STEP} value={value}
                     onChange={e=>onChange(Number(e.target.value))}
-                    className="flex-1 accent-red-600 cursor-pointer" aria-label="Speed" />
+                    className="speed-range flex-1 min-w-0" aria-label="Speed" />
                 <button onClick={()=>onChange(Math.min(SPEED_RANGE, value+SPEED_STEP))} title="Faster"
-                    className={`touch-target h-8 w-8 rounded-full shrink-0 ${isDark?'bg-slate-700 text-slate-300 hover:bg-slate-600':'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>
+                    className={`touch-target h-11 w-11 lg:h-8 lg:w-8 rounded-full shrink-0 ${isDark?'bg-slate-700 text-slate-300 hover:bg-slate-600':'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>
                     <i className="fa-solid fa-plus text-xs"/>
                 </button>
             </div>
-            <div className={`flex justify-between text-[10px] ${textMuted} mt-1 px-11`}>
+            <div className={`flex justify-between items-center text-[10px] ${textMuted} mt-1 px-14 lg:px-11`}>
                 <span>Slower</span>
-                <button onClick={()=>onChange(0)} className="hover:text-red-400">Normal for {segmentLabel}</button>
+                <button onClick={()=>onChange(0)} className="hover:text-red-400 py-2 lg:py-0 text-center">Normal for {segmentLabel}</button>
                 <span>Faster</span>
             </div>
         </div>
@@ -529,7 +545,7 @@ const SettingsModal = React.memo(({ apiKey, setApiKey, theme, setTheme, onClose,
         <div className={`${bgCard} rounded-t-2xl sm:rounded-2xl border ${borderSubtle} w-full sm:max-w-md shadow-2xl overflow-hidden`}>
             <div className={`p-5 border-b ${borderSubtle} flex justify-between items-center ${isDark?'bg-[#11141f]':'bg-slate-50'}`}>
                 <h2 className={`text-lg font-bold ${textHeader}`}>Studio Settings</h2>
-                <button onClick={onClose} className={`${textMuted} hover:text-red-400 transition-colors p-1`}>
+                <button onClick={onClose} aria-label="Close settings" className={`${textMuted} hover:text-red-400 transition-colors p-2.5 -m-1.5`}>
                     <i className="fa-solid fa-xmark text-xl"></i>
                 </button>
             </div>
@@ -553,7 +569,7 @@ const SettingsModal = React.memo(({ apiKey, setApiKey, theme, setTheme, onClose,
                     <div className="relative">
                         <i className={`fa-solid fa-key absolute left-3 top-3.5 ${textMuted}`}></i>
                         <input type="password"
-                            className={`w-full rounded-lg py-3 pl-10 pr-4 text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-all ${bgInput}`}
+                            className={`w-full rounded-lg py-3 pl-10 pr-4 text-base lg:text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-all ${bgInput}`}
                             placeholder="Paste key starting with AIza..."
                             value={apiKey}
                             onChange={e=>{const k=e.target.value;setApiKey(k);localStorage.setItem('geminiApiKey',k);}}/>
@@ -565,7 +581,7 @@ const SettingsModal = React.memo(({ apiKey, setApiKey, theme, setTheme, onClose,
                     <div className={`text-xs ${textMuted} mt-3 p-3 space-y-1 ${isDark?'bg-[#11141f] border border-slate-800':'bg-slate-50 border border-slate-200'} rounded-lg`}>
                         <p className="font-semibold text-red-400">How to get your key:</p>
                         <ol className="list-decimal list-inside ml-2 space-y-0.5">
-                            <li>Go to <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-red-400 hover:underline">Google AI Studio</a>.</li>
+                            <li>Go to <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" className="text-red-400 hover:underline">Google AI Studio</a>.</li>
                             <li>Click <strong>Create API key</strong> and copy it.</li>
                             <li>Paste above and Save.</li>
                         </ol>
@@ -611,6 +627,14 @@ const Studio = ({ onLogout }) => {
     });
     /* Unprocessed audio of the last voiceover, so speed can be changed without a new request */
     const rawAudioRef = React.useRef(null);
+    const audioBlobRef = React.useRef(null);
+    const resultRef    = React.useRef(null);
+    const scrollToResultRef = React.useRef(false);
+    /* Phones can hand the WAV straight to WhatsApp, Drive, etc. */
+    const canShareFiles = React.useMemo(()=>{
+        try { return !!navigator.canShare?.({ files: [new File([''], 'test.wav', {type:'audio/wav'})] }); }
+        catch { return false; }
+    },[]);
     const [error,     setError]     = React.useState('');
     const [showSettings, setShowSettings] = React.useState(false);
     const [previewingVoice, setPreviewingVoice] = React.useState(null);
@@ -638,9 +662,25 @@ const Studio = ({ onLogout }) => {
 
     const renderVoiceover = (raw, adj) => {
         const paced = setPace(raw.pcm, raw.rate, raw.words, raw.baseWpm * (1 + adj / 100));
-        setAudio(URL.createObjectURL(new Blob([pcmToWav(paced.pcm, raw.rate)], {type:'audio/wav'})), raw.filename);
+        audioBlobRef.current = new Blob([pcmToWav(paced.pcm, raw.rate)], {type:'audio/wav'});
+        setAudio(URL.createObjectURL(audioBlobRef.current), raw.filename);
         setAudioWpm(paced.wpm);
     };
+
+    const shareVoiceover = () => {
+        if (!audioBlobRef.current) return;
+        const file = new File([audioBlobRef.current], audioFile, {type:'audio/wav'});
+        navigator.share({ files: [file], title: audioFile }).catch(err=>{
+            if (err.name !== 'AbortError') setError('Sharing failed: '+err.message);
+        });
+    };
+
+    /* On phones the result is below the fold, so bring it into view once */
+    React.useEffect(()=>{
+        if (!audioSrc || !scrollToResultRef.current) return;
+        scrollToResultRef.current = false;
+        if (window.innerWidth < 1024) resultRef.current?.scrollIntoView({ behavior:'smooth', block:'start' });
+    },[audioSrc]);
 
     const handleSpeedChange = v => { setSpeedAdj(v); localStorage.setItem('speedAdj', v); };
 
@@ -654,13 +694,17 @@ const Studio = ({ onLogout }) => {
     const generateVoicePreview = async name => {
         if (!apiKey){setShowSettings(true);setError('Add your API key in Settings first.');return;}
         setPreviewingVoice(name);
+        /* iPhone only lets audio play if it starts during the tap, so start a
+           silent clip now and swap in the preview when it arrives */
+        const audio = new Audio(SILENT_WAV);
+        audio.play().catch(()=>{});
         try {
             /* Same direction as real output, so the preview sounds like the result */
             const previewPrompt = buildPrompt(PREVIEW_SCRIPT, 'Introduction', 'warm and welcoming', paceWords(150), ACCENTS[voiceInfo(name).accent]);
             const raw   = await callTTS(apiKey, name, previewPrompt);
             const paced = setPace(raw.pcm, raw.rate, countWords(PREVIEW_SCRIPT), 150 * (1 + speedAdj / 100));
             const url   = URL.createObjectURL(new Blob([pcmToWav(paced.pcm, raw.rate)], {type:'audio/wav'}));
-            const audio = new Audio(url);
+            audio.src = url;
             audio.onended=()=>{URL.revokeObjectURL(url);setPreviewingVoice(null);};
             audio.play().catch(()=>setPreviewingVoice(null));
         } catch(err){ setError('Preview failed: '+err.message); }
@@ -684,6 +728,7 @@ const Studio = ({ onLogout }) => {
                     rawAudioRef.current = { ...raw, words: countWords(script), baseWpm: cat.wpm,
                         voiceLabel: voiceInfo(voice).label, segmentLabel: cat.label,
                         filename: makeFilename(category, voiceInfo(voice).label.replace(/\s+/g,'-')) };
+                    scrollToResultRef.current = true;
                     renderVoiceover(rawAudioRef.current, speedAdj);
                     return;
                 } catch(err) {
@@ -774,12 +819,19 @@ const Studio = ({ onLogout }) => {
                             </div>
                         </div>
                         <textarea
-                            className={`w-full bg-transparent p-4 lg:p-6 outline-none resize-none text-base lg:text-xl leading-relaxed bengali-text ${textPrimary} ${isDark?'placeholder:text-slate-600':'placeholder:text-slate-400'}`}
-                            style={{minHeight:'314px'}}
+                            className={`w-full bg-transparent p-4 lg:p-6 outline-none resize-none text-base lg:text-xl leading-relaxed bengali-text min-h-[200px] lg:min-h-[314px] ${textPrimary} ${isDark?'placeholder:text-slate-600':'placeholder:text-slate-400'}`}
                             placeholder="Enter your news script here (Bengali or English)…"
                             value={script}
                             onChange={e=>{if(e.target.value.length<=MAX_CHARS)setScript(e.target.value);}}
                         />
+                    </div>
+
+                    {/* Segment selector: here on phones, in the left panel on desktop */}
+                    <div className="lg:hidden">
+                        <div className={`${bgCard} p-4 lg:p-5 rounded-2xl shadow-xl border ${borderSubtle}`}>
+                        <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-3">SEGMENT TYPE</h3>
+                        <CategorySelector category={category} onChange={handleCategoryChange} isDark={isDark} bgControlHover={bgControlHover} />
+                    </div>
                     </div>
 
                     {/* Error */}
@@ -799,14 +851,17 @@ const Studio = ({ onLogout }) => {
                     )}
 
                     {/* Action card */}
-                    <div className={`${bgCard} rounded-2xl border ${borderSubtle} p-4 lg:p-6 shadow-xl`}>
+                    {/* Phones: voice, speed, generate, result. Desktop: speed, generate, voice, result. */}
+                    <div className={`${bgCard} rounded-2xl border ${borderSubtle} p-4 lg:p-6 shadow-xl flex flex-col`}>
+                        <div className="order-2 lg:order-1">
                         <SpeedSlider value={speedAdj} onChange={handleSpeedChange}
                             baseWpm={(rawAudioRef.current && audioSrc) ? rawAudioRef.current.baseWpm : CATEGORIES.find(c=>c.id===category).wpm}
                             segmentLabel={(rawAudioRef.current && audioSrc) ? rawAudioRef.current.segmentLabel : CATEGORIES.find(c=>c.id===category).label}
                             isDark={isDark} textPrimary={textPrimary} textMuted={textMuted} />
+                        </div>
                         {!audioSrc && (
                             <button onClick={generateVoiceover} disabled={!canGenerate}
-                                className={`touch-target w-full py-3.5 lg:py-4 rounded-xl font-bold text-base lg:text-lg shadow-xl transition-all flex items-center justify-center gap-3
+                                className={`order-3 lg:order-2 touch-target w-full py-3.5 lg:py-4 rounded-xl font-bold text-base lg:text-lg shadow-xl transition-all flex items-center justify-center gap-3
                                     ${canGenerate?'bg-red-700 hover:bg-red-600 text-white neon-button':`${isDark?'bg-slate-700 text-slate-400':'bg-slate-300 text-slate-500'} cursor-not-allowed`}`}>
                                 {loading
                                     ? <><i className="fa-solid fa-circle-notch fa-spin"></i> Broadcasting…</>
@@ -815,7 +870,7 @@ const Studio = ({ onLogout }) => {
                         )}
 
                         {/* Voice selector */}
-                        <div className={`mt-4 lg:mt-5 pt-4 border-t ${borderSubtle}`}>
+                        <div className={`order-1 lg:order-3 mb-4 pb-4 border-b lg:mb-0 lg:pb-0 lg:border-b-0 lg:mt-5 lg:pt-4 lg:border-t ${borderSubtle}`}>
                             <h3 className="text-xs font-bold text-red-500 uppercase tracking-widest mb-3">VOICE TALENT</h3>
                             <VoiceSelector
                                 voice={voice} onChange={handleVoiceChange}
@@ -825,7 +880,7 @@ const Studio = ({ onLogout }) => {
 
                         {/* Audio player */}
                         {audioSrc && (
-                            <div className="animate-fade-in mt-5 pt-5 border-t border-slate-700">
+                            <div ref={resultRef} className={`order-4 animate-fade-in mt-5 pt-5 border-t ${borderSubtle}`}>
                                 <div className={`flex items-center justify-between mb-4`}>
                                     <div className="flex items-center gap-3">
                                         <div className="h-10 w-10 bg-green-500/10 rounded-full flex items-center justify-center border border-green-700 text-green-500 shrink-0">
@@ -843,13 +898,19 @@ const Studio = ({ onLogout }) => {
                                 </div>
                                 <audio controls src={audioSrc} className="w-full h-10 mb-4 rounded-lg" autoPlay></audio>
                                 <div className="grid grid-cols-2 gap-3">
+                                    {canShareFiles && (
+                                        <button onClick={shareVoiceover}
+                                            className="col-span-2 touch-target flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold bg-green-600 text-white hover:bg-green-500 transition-colors">
+                                            <i className="fa-solid fa-share-nodes"></i>Share (WhatsApp, Drive…)
+                                        </button>
+                                    )}
                                     <button onClick={()=>{setAudio(null);setRetryInfo('');rawAudioRef.current=null;}}
                                         className={`touch-target py-3 rounded-xl text-sm font-semibold ${isDark?'bg-slate-700 text-slate-300 hover:bg-slate-600':'bg-slate-200 text-slate-700 hover:bg-slate-300'} transition-colors`}>
                                         <i className="fa-solid fa-file-circle-plus mr-1.5"></i>New Script
                                     </button>
                                     <a href={audioSrc} download={audioFile}
                                         className="touch-target flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold bg-red-600 text-white hover:bg-red-500 transition-colors neon-button">
-                                        <i className="fa-solid fa-download"></i>Download WAV
+                                        <i className="fa-solid fa-download"></i><span className="sm:hidden">Download</span><span className="hidden sm:inline">Download WAV</span>
                                     </a>
                                 </div>
                                 <p className={`text-[10px] ${textMuted} mt-2 text-center truncate`}>{audioFile}</p>
@@ -858,8 +919,8 @@ const Studio = ({ onLogout }) => {
                     </div>
                 </div>
 
-                {/* ── LEFT / CONTROLS PANEL (second on mobile) ── */}
-                <div className="order-2 lg:order-1 lg:col-span-4 flex flex-col gap-4 lg:gap-6 lg:space-y-0">
+                {/* ── LEFT / CONTROLS PANEL (desktop only) ── */}
+                <div className="hidden lg:flex lg:order-1 lg:col-span-4 flex-col gap-6">
 
                     {/* Segment selector */}
                     <div className={`${bgCard} p-4 lg:p-5 rounded-2xl shadow-xl border ${borderSubtle}`}>

@@ -58,6 +58,121 @@
 <body>
 <div id="root"></div>
 
+<!-- AUDIO-DSP-START: plain JS (no JSX) so it can be tested on its own -->
+<script>
+/* ─── PACE CONTROL ───────────────────────────────────────────────
+   Gemini ignores "speak faster" and leaves long gaps, so pace is set
+   after generation: shorten long pauses, then time-stretch (without
+   changing pitch) towards a words-per-minute target.               */
+const PAUSE_SHORT_MAX = 0.4;   /* longest pause kept between sentences (s) */
+const PAUSE_LONG_MAX  = 0.65;  /* longest pause kept at paragraph breaks (s) */
+const PAUSE_LONG_FROM = 1.0;   /* gaps longer than this are paragraph breaks (s) */
+const EDGE_SILENCE    = 0.15;  /* silence kept at start and end (s) */
+const SPEED_MIN = 0.9, SPEED_MAX = 1.3;
+
+const pcm16ToFloat = bytes => {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const out  = new Float32Array(bytes.byteLength >> 1);
+    for (let i = 0; i < out.length; i++) out[i] = view.getInt16(i * 2, true) / 32768;
+    return out;
+};
+
+const floatToPcm16 = samples => {
+    const out  = new Uint8Array(samples.length * 2);
+    const view = new DataView(out.buffer);
+    for (let i = 0; i < samples.length; i++)
+        view.setInt16(i * 2, Math.max(-1, Math.min(1, samples[i])) * 32767, true);
+    return out;
+};
+
+/* Shorten silences: frames quieter than 6% of the loud level count as silence. */
+const trimPauses = (x, sr) => {
+    const hop = Math.round(sr * 0.02), frames = Math.floor(x.length / hop);
+    if (frames < 10) return x;
+    const rms = new Float32Array(frames);
+    for (let f = 0; f < frames; f++) {
+        let s = 0;
+        for (let i = f * hop; i < (f + 1) * hop; i++) s += x[i] * x[i];
+        rms[f] = Math.sqrt(s / hop);
+    }
+    const sorted = Array.from(rms).sort((a, b) => a - b);
+    const thr = Math.max(sorted[Math.floor(frames * 0.95)] * 0.06, 0.0015);
+    const loud = Array.from(rms, r => r > thr);
+    const first = loud.indexOf(true), last = loud.lastIndexOf(true);
+    if (first < 0) return x;
+
+    const keep = [];   /* [start, end) sample ranges */
+    const fade = Math.round(sr * 0.01);
+    keep.push([Math.max(0, first * hop - Math.round(EDGE_SILENCE * sr)), first * hop]);
+    let f = first;
+    while (f <= last) {
+        if (loud[f]) { const s = f; while (f <= last && loud[f]) f++; keep.push([s * hop, f * hop]); continue; }
+        const s = f; while (f <= last && !loud[f]) f++;
+        const gap = (f - s) * 0.02;
+        const max = gap > PAUSE_LONG_FROM ? PAUSE_LONG_MAX : PAUSE_SHORT_MAX;
+        const len = Math.round(Math.min(gap, max) * sr);
+        /* keep half the allowed pause from each side of the gap */
+        keep.push([s * hop, s * hop + (len >> 1)]);
+        keep.push([f * hop - (len - (len >> 1)), f * hop]);
+    }
+    keep.push([(last + 1) * hop, Math.min(x.length, (last + 1) * hop + Math.round(EDGE_SILENCE * sr))]);
+
+    const total = keep.reduce((n, [a, b]) => n + Math.max(0, b - a), 0);
+    const y = new Float32Array(total);
+    let o = 0;
+    for (const [a, b] of keep) {
+        for (let i = a; i < b; i++, o++) {
+            /* short fades at each join avoid clicks */
+            const g = Math.min(1, (i - a + 1) / fade, (b - i) / fade);
+            y[o] = x[i] * g;
+        }
+    }
+    return y;
+};
+
+/* WSOLA time-stretch: rate > 1 is faster, pitch unchanged. */
+const timeStretch = (x, rate) => {
+    if (Math.abs(rate - 1) < 0.02) return x;
+    const N = 1024, Hs = N >> 1, tol = 256;
+    const win = new Float32Array(N);
+    for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / N);
+    const outLen = Math.floor(x.length / rate);
+    const y = new Float32Array(outLen + N), w = new Float32Array(outLen + N);
+    let prev = 0;
+    for (let k = 0; ; k++) {
+        const outPos = k * Hs, nominal = Math.round(outPos * rate);
+        if (outPos >= outLen || nominal + N + tol >= x.length) break;
+        let best = nominal;
+        const ref = prev + Hs;
+        if (k > 0 && ref + N <= x.length) {
+            let bestC = -Infinity;
+            for (let d = -tol; d <= tol; d += 2) {
+                const p = nominal + d;
+                if (p < 0 || p + N > x.length) continue;
+                let c = 0;
+                for (let i = 0; i < N; i += 4) c += x[p + i] * x[ref + i];
+                if (c > bestC) { bestC = c; best = p; }
+            }
+        }
+        for (let i = 0; i < N; i++) { y[outPos + i] += x[best + i] * win[i]; w[outPos + i] += win[i]; }
+        prev = best;
+    }
+    for (let i = 0; i < y.length; i++) if (w[i] > 1e-3) y[i] /= w[i];
+    return y.subarray(0, outLen);
+};
+
+/* Trim pauses, then speed up or slow down so `words` are read at `targetWpm`.
+   Returns 16-bit PCM bytes plus the pace actually reached. */
+const setPace = (pcmBytes, sr, words, targetWpm) => {
+    let x = trimPauses(pcm16ToFloat(pcmBytes), sr);
+    const wpm  = words / (x.length / sr) * 60;
+    const rate = Math.max(SPEED_MIN, Math.min(SPEED_MAX, targetWpm / wpm));
+    x = timeStretch(x, rate);
+    return { pcm: floatToPcm16(x), wpm: Math.round(words / (x.length / sr) * 60), rate };
+};
+</script>
+<!-- AUDIO-DSP-END -->
+
 <script type="text/babel">
 /* ─── CONSTANTS ──────────────────────────────────────────────── */
 const MAX_CHARS   = 1500;
@@ -107,34 +222,42 @@ const cleanScript = script => script
     .replace(/\n{3,}/g, '\n\n')        /* keep paragraph breaks, no huge gaps */
     .trim();
 
-const buildPrompt = (script, segment, tone, accent) => `Read the TRANSCRIPT aloud exactly as written. Do not read these notes, the headings, or anything outside the transcript.
+const countWords = script => cleanScript(script).split(/\s+/).filter(Boolean).length;
+
+const buildPrompt = (script, segment, tone, pace, accent) => `Read the TRANSCRIPT aloud exactly as written. Do not read these notes, the headings, or anything outside the transcript.
 
 AUDIO PROFILE: ${accent.profile}
 
 ACCENT: ${accent.accent} Keep this accent the same from the first word to the last. Read every word exactly as written; change only pronunciation and intonation, never the words.
 
-PAUSES: Take a short breath at commas. Pause clearly at every দাঁড়ি (।), full stop and question mark. Pause longer between paragraphs, where a new story or point begins. Never rush through punctuation or run sentences together.
+PAUSES: Natural and brief, like a live TV anchor. A tiny breath at commas, a short clean stop at every দাঁড়ি (।), full stop and question mark, and only a slightly longer pause between paragraphs. Never leave long silences, and never run sentences together.
 
-DELIVERY: Sound like a real person talking to the viewer, not a machine reading text: confident, warm authority. Stress the key word in each sentence, let pitch move naturally, and let each sentence settle down at its end. Avoid a sing-song or robotic rhythm and keep a steady broadcast pace.
+DELIVERY: Sound like a real person talking to the viewer, not a machine reading text: confident, warm authority. Stress the key word in each sentence, let pitch move naturally, and let each sentence settle down at its end. Avoid a sing-song or robotic rhythm.
 
-SEGMENT: ${segment}. Tone: ${tone}.
+SEGMENT: ${segment}. Tone: ${tone}. Pace: ${pace}.
 
 TRANSCRIPT:
 ${cleanScript(script)}`;
 
 /* ─── DATA ───────────────────────────────────────────────────── */
+/* wpm: target words per minute for the finished audio (pauses included).
+   Raise or lower a number to make that segment faster or slower. */
+const paceWords = wpm => wpm >= 160 ? 'brisk and energetic, keep the momentum'
+                       : wpm >= 150 ? 'lively, normal news pace'
+                       : 'measured and unhurried, but never slow';
+
 const CATEGORIES = [
-    { id:'Breaking News',             label:'Breaking News', icon:'fa-bolt',               color:'bg-red-700',    promptMod:'urgent and serious, slightly quicker but still clear and controlled'        },
-    { id:'Sports',                    label:'Sports',        icon:'fa-trophy',              color:'bg-green-600',  promptMod:'lively, with genuine excitement on key moments'   },
-    { id:'Politics',                  label:'Politics',      icon:'fa-landmark',            color:'bg-yellow-600', promptMod:'measured, neutral and authoritative'    },
-    { id:'Entertainment & Lifestyle', label:'Lifestyle',     icon:'fa-masks-theater',       color:'bg-emerald-700',promptMod:'light, friendly and conversational'  },
-    { id:'Business & Economy',        label:'Business',      icon:'fa-chart-line',          color:'bg-sky-600',    promptMod:'clear and measured, careful with numbers'          },
-    { id:'Crime & Law',               label:'Crime & Law',   icon:'fa-handcuffs',           color:'bg-amber-800',  promptMod:'grave and deliberate, slightly slower'        },
-    { id:'Community & Local News',    label:'Local News',    icon:'fa-people-group',        color:'bg-pink-600',   promptMod:'warm and friendly, like talking to neighbours'          },
-    { id:'Weather',                   label:'Weather',       icon:'fa-cloud-sun',           color:'bg-purple-700', promptMod:'calm, clear and helpful'              },
-    { id:'Education & Youth',         label:'Education',     icon:'fa-graduation-cap',      color:'bg-indigo-700', promptMod:'positive and encouraging'    },
-    { id:'Awareness',                 label:'Awareness',     icon:'fa-hand-holding-heart',  color:'bg-blue-800',   promptMod:'sincere and clear'},
-    { id:'Social & Cultural',         label:'Culture',       icon:'fa-brush',               color:'bg-gray-800',   promptMod:'reflective and respectful'   },
+    { id:'Breaking News',             label:'Breaking News', icon:'fa-bolt',               color:'bg-red-700',    promptMod:'urgent and serious, slightly quicker but still clear and controlled', wpm:165 },
+    { id:'Sports',                    label:'Sports',        icon:'fa-trophy',              color:'bg-green-600',  promptMod:'lively, with genuine excitement on key moments', wpm:165 },
+    { id:'Politics',                  label:'Politics',      icon:'fa-landmark',            color:'bg-yellow-600', promptMod:'measured, neutral and authoritative', wpm:150 },
+    { id:'Entertainment & Lifestyle', label:'Lifestyle',     icon:'fa-masks-theater',       color:'bg-emerald-700',promptMod:'light, friendly and conversational', wpm:155 },
+    { id:'Business & Economy',        label:'Business',      icon:'fa-chart-line',          color:'bg-sky-600',    promptMod:'clear and measured, careful with numbers', wpm:150 },
+    { id:'Crime & Law',               label:'Crime & Law',   icon:'fa-handcuffs',           color:'bg-amber-800',  promptMod:'grave and deliberate, slightly slower', wpm:145 },
+    { id:'Community & Local News',    label:'Local News',    icon:'fa-people-group',        color:'bg-pink-600',   promptMod:'warm and friendly, like talking to neighbours', wpm:150 },
+    { id:'Weather',                   label:'Weather',       icon:'fa-cloud-sun',           color:'bg-purple-700', promptMod:'calm, clear and helpful', wpm:150 },
+    { id:'Education & Youth',         label:'Education',     icon:'fa-graduation-cap',      color:'bg-indigo-700', promptMod:'positive and encouraging', wpm:150 },
+    { id:'Awareness',                 label:'Awareness',     icon:'fa-hand-holding-heart',  color:'bg-blue-800',   promptMod:'sincere and clear', wpm:140 },
+    { id:'Social & Cultural',         label:'Culture',       icon:'fa-brush',               color:'bg-gray-800',   promptMod:'reflective and respectful', wpm:140 },
 ];
 
 const ACCENTS = {
@@ -143,8 +266,8 @@ const ACCENTS = {
         accent:  'Natural, standard Kolkata Bengali (চলিত ভাষা) as heard on Bengali TV news: correct Bengali vowel sounds, soft consonants and the gentle rise and fall of Kolkata speech. No English or Hindi accent on Bengali words; say English names and numbers the way a Kolkata anchor naturally would.',
     },
     silchar: {
-        profile: 'An experienced Bengali news anchor from Silchar in the Barak Valley of Assam, reading the news live on air for a local Barak Valley audience.',
-        accent:  'The Bengali of Silchar and the Barak Valley, shaped by Sylheti: Sylheti vowel sounds and consonant colouring, a flatter, slightly nasal melody, and the steadier, heavier rhythm of Barak Valley speech. This is NOT Kolkata Bengali and NOT Bangladeshi Sylheti; avoid the musical rise and fall of Kolkata speech. Say English names and numbers the way a Silchar anchor naturally would.',
+        profile: 'An experienced news anchor from Silchar in the Barak Valley of Assam, whose home language is Sylheti, reading Bengali news live on air for a Sylheti-speaking audience in Silchar and Sylhet.',
+        accent:  'A strong, natural Sylheti accent, the way people from Silchar and Sylhet sound when they read Bengali. Use Sylheti sounds: প leans towards ফ (পানি sounds like ফানি), ক leans towards a throaty খ, স and শ lean towards হ at the start of words, and aspirated consonants flatten. Use the Sylheti melody: flatter and more even than Kolkata speech, with a heavier, rounder rhythm, never the musical rise and fall of Kolkata Bengali. Say English names and numbers the way a Sylheti speaker naturally would.',
     },
 };
 
@@ -198,7 +321,8 @@ const callTTSModel = async (apiKey, voiceName, text, model) => {
         const txt = candidate?.content?.parts?.[0]?.text || '';
         throw new Error(`No audio (reason: ${finishReason||'unknown'})${txt?' — '+txt.slice(0,100):''}`);
     }
-    return URL.createObjectURL(new Blob([pcmToWav(b64ToBytes(inline.data))],{type:'audio/wav'}));
+    const rate = Number((inline.mimeType||'').match(/rate=(\d+)/)?.[1]) || 24000;
+    return { pcm: b64ToBytes(inline.data), rate };
 };
 
 /* Remember which model worked so later calls skip unavailable ones */
@@ -207,7 +331,7 @@ let firstModel = 0;
 const callTTS = async (apiKey, voiceName, text) => {
     let lastErr;
     for (let i = firstModel; i < TTS_MODELS.length; i++) {
-        try { const url = await callTTSModel(apiKey, voiceName, text, TTS_MODELS[i]); firstModel = i; return url; }
+        try { const audio = await callTTSModel(apiKey, voiceName, text, TTS_MODELS[i]); firstModel = i; return audio; }
         catch (err) {
             if (err.message.startsWith('MODEL_NOT_FOUND:')) { lastErr=err; continue; }
             throw err;
@@ -444,6 +568,7 @@ const Studio = ({ onLogout }) => {
     const [retryInfo, setRetryInfo] = React.useState('');
     const [audioSrc,  setAudioSrc]  = React.useState(null);
     const [audioFile, setAudioFile] = React.useState('');
+    const [audioWpm,  setAudioWpm]  = React.useState(0);
     const [error,     setError]     = React.useState('');
     const [showSettings, setShowSettings] = React.useState(false);
     const [previewingVoice, setPreviewingVoice] = React.useState(null);
@@ -474,8 +599,10 @@ const Studio = ({ onLogout }) => {
         setPreviewingVoice(name);
         try {
             /* Same direction as real output, so the preview sounds like the result */
-            const previewPrompt = buildPrompt(PREVIEW_SCRIPT, 'Introduction', 'warm and welcoming', ACCENTS[voiceInfo(name).accent]);
-            const url = await callTTS(apiKey, name, previewPrompt);
+            const previewPrompt = buildPrompt(PREVIEW_SCRIPT, 'Introduction', 'warm and welcoming', paceWords(150), ACCENTS[voiceInfo(name).accent]);
+            const raw   = await callTTS(apiKey, name, previewPrompt);
+            const paced = setPace(raw.pcm, raw.rate, countWords(PREVIEW_SCRIPT), 150);
+            const url   = URL.createObjectURL(new Blob([pcmToWav(paced.pcm, raw.rate)], {type:'audio/wav'}));
             const audio = new Audio(url);
             audio.onended=()=>{URL.revokeObjectURL(url);setPreviewingVoice(null);};
             audio.play().catch(()=>setPreviewingVoice(null));
@@ -491,12 +618,15 @@ const Studio = ({ onLogout }) => {
         setLoading(true); setError(''); setRetryInfo(''); setAudio(null);
 
         const cat    = CATEGORIES.find(c=>c.id===category);
-        const prompt = buildPrompt(script, category, cat.promptMod, ACCENTS[voiceInfo(voice).accent]);
+        const prompt = buildPrompt(script, category, cat.promptMod, paceWords(cat.wpm), ACCENTS[voiceInfo(voice).accent]);
 
         try {
             for (let attempt=0; attempt<MAX_RETRIES; attempt++) {
                 try {
-                    const url      = await callTTS(apiKey, voice, prompt);
+                    const raw      = await callTTS(apiKey, voice, prompt);
+                    const paced    = setPace(raw.pcm, raw.rate, countWords(script), cat.wpm);
+                    const url      = URL.createObjectURL(new Blob([pcmToWav(paced.pcm, raw.rate)], {type:'audio/wav'}));
+                    setAudioWpm(paced.wpm);
                     const filename = makeFilename(category, voiceInfo(voice).label.replace(/\s+/g,'-'));
                     setAudio(url, filename);
                     return;
@@ -643,7 +773,7 @@ const Studio = ({ onLogout }) => {
                                         </div>
                                         <div>
                                             <p className={`font-bold ${textPrimary} text-base`}>Broadcast Ready</p>
-                                            <p className={`text-xs ${textMuted}`}>{voiceInfo(voice).label} · {CATEGORIES.find(c=>c.id===category)?.label}</p>
+                                            <p className={`text-xs ${textMuted}`}>{voiceInfo(voice).label} · {CATEGORIES.find(c=>c.id===category)?.label} · {audioWpm} words/min</p>
                                         </div>
                                     </div>
                                     <div className="bar-container">
